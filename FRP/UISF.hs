@@ -1,7 +1,8 @@
-module UISF
+module FRP.UISF
   ( -- UI functions
     UISF 
   , convertToUISF       -- :: NFData b => Integer -> Int -> SF a b -> UISF a ([b], Bool)
+  , asyncUISF           -- :: Automaton a b -> UISF (SEvent a) (SEvent b)
   , Dimension           -- type Dimension = (Int, Int)
   , Rect                -- type Rect = (Point, Dimension)
   , topDown, bottomUp, leftRight, rightLeft    -- :: UISF a b -> UISF a b
@@ -35,14 +36,14 @@ module UISF
   , makeLayout          -- :: LayoutType -> LayoutType -> Layout
   , LayoutType (..)     -- data LayoutType = Stretchy { minSize :: Int } | Fixed { fixedSize :: Int }
   , Color (..)          -- data Color = Black | Blue | Green | Cyan | Red | Magenta | Yellow | White
-  , module Control.SF.AuxFunctions
+  , module FRP.UISF.AuxFunctions
   , module Control.Arrow
   ) where
 
-import UISF.UIMonad
-import UISF.UISF
-import UISF.Widget
-import UISF.SOE (Color (..))
+import FRP.UISF.UIMonad
+import FRP.UISF.UISF
+import FRP.UISF.Widget
+import FRP.UISF.SOE (Color (..))
 
-import Control.SF.AuxFunctions
+import FRP.UISF.AuxFunctions
 import Control.Arrow

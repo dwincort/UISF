@@ -8,12 +8,12 @@ The monadic UI concept is borrowed from Phooey by Conal Elliott.
 
 > {-# LANGUAGE DoRec, Arrows, TupleSections #-}
 
-> module UISF.Widget where
+> module FRP.UISF.Widget where
 
-> import UISF.SOE
-> import UISF.UIMonad
-> import UISF.UISF
-> import Control.SF.AuxFunctions (SEvent, Time, timer, edge, delay, constA, concatA)
+> import FRP.UISF.SOE
+> import FRP.UISF.UIMonad
+> import FRP.UISF.UISF
+> import FRP.UISF.AuxFunctions (SEvent, Time, timer, edge, delay, constA, concatA)
 
 > import Control.Arrow
 

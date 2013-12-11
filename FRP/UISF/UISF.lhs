@@ -3,23 +3,21 @@ by Conal Elliot.
 
 > {-# LANGUAGE ScopedTypeVariables, Arrows, DoRec, CPP, OverlappingInstances, FlexibleInstances, TypeSynonymInstances #-}
 
-> module UISF.UISF where
+> module FRP.UISF.UISF where
 
 #if __GLASGOW_HASKELL__ >= 610
 > import Control.Category
-> import Prelude hiding ((.), init, exp)
-#else
-> import Prelude hiding (init, exp)
+> import Prelude hiding ((.))
 #endif
 > import Control.Arrow
-> import Control.CCA.Types
+> import Control.Arrow.Operations
 
-> import UISF.SOE 
-> import UISF.UIMonad
+> import FRP.UISF.SOE
+> import FRP.UISF.UIMonad
 
-> import Control.SF.SF
-> import Control.SF.MSF
-> import Control.SF.AuxFunctions (Time, toMSF, toRealTimeMSF, SEvent, ArrowTime (..))
+> import FRP.UISF.Types.MSF
+> import FRP.UISF.AuxFunctions (Automaton, Time, toMSF, toRealTimeMSF, 
+>                               async, SEvent, ArrowTime (..))
 
 > import Control.Monad (when)
 > import qualified Graphics.UI.GLFW as GLFW (sleep, SpecialKey (..))
@@ -33,8 +31,8 @@ The main UI signal function, built from the UI monad and MSF.
 
 We probably want this to be a deepseq, but changing the types is a pain.
 
-> instance ArrowInit UISF where
->   init i = MSF (h i) where h i x = seq i $ return (i, MSF (h x))
+> instance ArrowCircuit UISF where
+>   delay i = MSF (h i) where h i x = seq i $ return (i, MSF (h x))
 
 > instance ArrowTime UISF where
 >   time = getTime
@@ -59,7 +57,7 @@ We probably want this to be a deepseq, but changing the types is a pain.
 > getMousePosition :: UISF () Point
 > getMousePosition = proc _ -> do
 >   e <- getEvents -< ()
->   rec p' <- init (0,0) -< p
+>   rec p' <- delay (0,0) -< p
 >       let p = case e of
 >                   MouseMove pt -> pt
 >                   _            -> p'
@@ -108,9 +106,9 @@ uisfPipe   = pipe . (liftIO .)
 > uisfSourceE :: IO c ->         UISF (SEvent ()) (SEvent c)
 > uisfSinkE   :: (b -> IO ()) -> UISF (SEvent b)  (SEvent ())
 > uisfPipeE   :: (b -> IO c) ->  UISF (SEvent b)  (SEvent c)
-> uisfSourceE = (init Nothing >>>) . sourceE . liftIO
-> uisfSinkE   = (init Nothing >>>) . sinkE . (liftIO .)
-> uisfPipeE   = (init Nothing >>>) . pipeE . (liftIO .)
+> uisfSourceE = (delay Nothing >>>) . sourceE . liftIO
+> uisfSinkE   = (delay Nothing >>>) . sinkE . (liftIO .)
+> uisfPipeE   = (delay Nothing >>>) . pipeE . (liftIO .)
 
 
 
@@ -121,7 +119,7 @@ The following two functions are for lifting SFs to UISFs.  The first is a
 quick and dirty solution that ignores timing issues.  The second is the 
 standard one that appropriately keeps track of simulated time vs real time.  
 
-> toUISF :: SF a b -> UISF a b
+> toUISF :: Automaton a b -> UISF a b
 > toUISF = toMSF
 
 The clockrate is the simulated rate of the input signal function.
@@ -137,10 +135,15 @@ Note also that the caller can check the time stamp on the element
 at the end of the list to see if the inner, "simulated" signal 
 function is performing as fast as it should.
 
-> convertToUISF :: NFData b => Double -> Double -> SF a b -> UISF a [(b, Time)]
+> convertToUISF :: NFData b => Double -> Double -> Automaton a b -> UISF a [(b, Time)]
 > convertToUISF clockrate buffer sf = proc a -> do
 >   t <- time -< ()
 >   toRealTimeMSF clockrate buffer addThreadID sf -< (a, t)
+
+We can also lift a signal function to a UISF asynchronously.
+
+> asyncUISF :: NFData b => Automaton a b -> UISF (SEvent a) (SEvent b)
+> asyncUISF = async addThreadID
 
 
 Layout Transformers

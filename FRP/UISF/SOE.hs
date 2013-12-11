@@ -1,4 +1,4 @@
-module UISF.SOE (
+module FRP.UISF.SOE (
   runGraphics,
   Title,
   Size,

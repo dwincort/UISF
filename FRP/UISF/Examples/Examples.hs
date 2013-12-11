@@ -6,10 +6,10 @@
 -- This file is a set of various UI examples showing off the features 
 -- of the various widgets in UISF.
 
-module Examples.Examples where
+module FRP.UISF.Examples.Examples where
 
-import UISF
-import UISF.SOE (withColor', rgb, polygon)
+import FRP.UISF
+import FRP.UISF.SOE (withColor', rgb, polygon)
 
 import Numeric (showHex)
 import Data.Maybe (listToMaybe, catMaybes)

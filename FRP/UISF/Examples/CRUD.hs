@@ -2,7 +2,7 @@
 -- Created by: Daniel Winograd-Cort
 -- Created on: 11/21/2012
 -- Last Modified by: Daniel Winograd-Cort
--- Last Modified on: 5/23/2013
+-- Last Modified on: 12/10/2013
 
 -- -- DESCRIPTION --
 -- This code was inspired by a blog post by Heinrich Apfelmus on 
@@ -13,8 +13,8 @@
 
 
 {-# LANGUAGE Arrows, DoRec #-}
-module Examples.Crud where
-import UISF
+module FRP.UISF.Examples.Crud where
+import FRP.UISF
 
 import Data.List (isInfixOf)
 import Data.Char (toLower)

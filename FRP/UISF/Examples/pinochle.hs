@@ -1,6 +1,6 @@
 -- Author: Daniel Winograd-Cort
 -- Date Created:        unknown
--- Date Last Modified:  5/23/2013
+-- Date Last Modified:  12/10/2013
 
 -- This is a pinochle assistant.  The user enters his hand at the GUI
 -- and selects his preferred trump suit, and his meld is displayed.
@@ -18,9 +18,8 @@
 -- make sure to use "ghc --make -O2 pinochle.hs"
 
 {-# LANGUAGE Arrows, BangPatterns #-}
-module Examples.Pinochle where
-import UISF hiding (accum)
-import UISF.UIMonad (addThreadID)
+module FRP.UISF.Examples.Pinochle where
+import FRP.UISF hiding (accum)
 
 import Data.List (delete, foldl', group)
 import GHC.Arr (Ix(..), indexError)
@@ -112,7 +111,7 @@ pinochleSF = proc _ -> do
             _ -> Nothing
     b <- edge <<< button "Calculate meld from kitty" -< ()
     --let kre = Nothing
-    kre <- (async addThreadID $ arr $ uncurry kittyResult) -< fmap (const (hand, kittenSizeStr)) b
+    kre <- (asyncUISF $ toAutomaton $ uncurry kittyResult) -< fmap (const (hand, kittenSizeStr)) b
     k <- hold [] -< maybe (fmap (const ["Calculating ..."]) b) Just kre
     displayStrList -< k
     returnA -< ()

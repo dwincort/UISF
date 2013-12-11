@@ -7,33 +7,35 @@ copyright:      Copyright (c) 2013 Daniel Winograd-Cort
 category:       GUI
 stability:      experimental
 build-type:     Simple
-author:         Dan Winograd-Cort <daniel.winograd-cort@yale.edu>
-maintainer:     Dan Winograd-Cort <daniel.winograd-cort@yale.edu>
-bug-reports:    mailto:daniel.winograd-cort@yale.edu
+author:         Dan Winograd-Cort <dwc@cs.yale.edu>
+maintainer:     Dan Winograd-Cort <dwc@cs.yale.edu>
+bug-reports:    mailto:dwc@cs.yale.edu
 homepage:       http://haskell.cs.yale.edu/
 synopsis:       Library for Arrowized Graphical User Interfaces.
 description:
         UISF is a library for making arrowized GUIs.
 extra-source-files:
         ReadMe.txt,
-        Examples/EnableGUI.hs
+        FRP/UISF/Examples/EnableGUI.hs
 
 Library
   hs-source-dirs: .
   ghc-options: -O2 -funbox-strict-fields
   exposed-modules: 
-        Examples.Crud,
-        Examples.Examples,
-        Examples.Pinochle,
-        UISF.SOE,
-        UISF.UIMonad,
-        UISF.UISF,
-        UISF.Widget,
-        UISF
+        FRP.UISF.Examples.Crud,
+        FRP.UISF.Examples.Examples,
+        FRP.UISF.Examples.Pinochle,
+        FRP.UISF.Types.MSF,
+        FRP.UISF.AuxFunctions,
+        FRP.UISF.SOE,
+        FRP.UISF.UIMonad,
+        FRP.UISF.UISF,
+        FRP.UISF.Widget,
+        FRP.UISF
   other-modules:
   build-depends:
         base >= 3 && < 5, containers, array,
-        CCA >= 0.1.3, GLFW == 0.5.*, OpenGL, 
-        monadIO, deepseq, stm, AFRP-Utils
+        arrows == 0.4.*, GLFW == 0.5.*, OpenGL, 
+        monadIO, deepseq, stm
   if (impl(ghc >= 6.10))
     build-depends: base >= 4 && < 5

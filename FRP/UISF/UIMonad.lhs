@@ -3,10 +3,10 @@ by Conal Elliot.
 
 > {-# LANGUAGE DoRec #-}
 
-> module UISF.UIMonad where
+> module FRP.UISF.UIMonad where
 
-> import UISF.SOE
-> import Control.SF.AuxFunctions (Time)
+> import FRP.UISF.SOE
+> import FRP.UISF.AuxFunctions (Time)
 
 > import Control.Monad.Fix
 > import Control.Concurrent.MonadIO
