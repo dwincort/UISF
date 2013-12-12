@@ -1,13 +1,31 @@
-{-# LANGUAGE Arrows #-}
+-- Filename: fft.hs
+-- Created by: Daniel Winograd-Cort
+-- Created on: unknown
+-- Last Modified by: Daniel Winograd-Cort
+-- Last Modified on: 12/12/2013
 
+-- -- DESCRIPTION --
+-- This code was inspired by Euterpea.  It uses UISF to present a GUI that 
+-- shows the sum of two waves (whose frequencies are specified by the user) 
+-- as well as the Fast Fourier Transform of that sum.
+-- 
+-- This module requires the array and pure-fft packages.
+
+{-# LANGUAGE Arrows #-}
+module FRP.UISF.Examples.FFT where
 import FRP.UISF
-import Euterpea (osc, tableLinearN, tableSinesN)
 import Control.Arrow.Operations
 import Numeric.FFT (fft)
 import Data.Complex
 import Data.Map (Map)
 import Data.Maybe (listToMaybe, catMaybes)
 import qualified Data.Map as Map
+
+import FRP.UISF.Types.MSF
+import Data.Array.Unboxed
+import Data.Functor.Identity
+
+
 
 -- | Alternative for working with Math.FFT instead of Numeric.FFT
 --import qualified Math.FFT as FFT
@@ -17,10 +35,41 @@ import qualified Data.Map as Map
 
 
 --------------------------------------
--- Methods from Euterpea for making signals
+-- Sine wave oscillators
 --------------------------------------
 
+-- Table definition
+type Table = UArray Int Double
 
+-- Sine table generator. Takes an integer representing the number of samples to generate
+-- and a list of relative intensities for the overtones of the sine wave.
+
+tableSinesN :: Int -> [Double] -> Table
+tableSinesN size amps = 
+    let wave x   = sum (zipWith (*) [sin (2*pi*x*n) | n <- [1..]] amps)
+        delta    = 1 / fromIntegral size
+        waveform = take size $ map wave [0,delta..]
+        divisor  = (maximum . map abs) waveform
+     in listArray (0,size) (map (/divisor) waveform)
+
+-- Two example sine tables.
+
+tab1, tab2 :: Table
+tab1 = tableSinesN 4096 [1] -- Basic sine wave
+tab2 = tableSinesN 4096 [1.0,0.5,0.33]
+
+-- Table-driven oscillator
+
+osc :: Table -> Double -> MSF Identity Double Double
+osc table sr = proc freq -> do
+    rec 
+      let delta = 1 / sr * freq
+          phase = if next > 1 then frac next else next
+      next <- delay 0 -< frac (phase + delta)
+    returnA -< ((table!).(`mod` size).round.(*rate)) phase
+  where (_,size)    = bounds table
+        rate        = fromIntegral size
+        frac x = if x > 1 then x - fromIntegral (truncate x) else x
 
 
 --------------------------------------
@@ -54,6 +103,9 @@ fftA qf fp = proc d -> do
     returnA -< fmap (map magnitude . take (fp `div` 2) . fft) carray
 
 
+--------------------------------------
+-- UISF Example
+--------------------------------------
 
 -- This example shows off the histogram and realtimeGraph widgets by 
 -- summing two sin waves and displaying them.  Additionally, it makes 
@@ -66,22 +118,21 @@ fftEx = proc _ -> do
     _ <- leftRight (label "Freq 1: " >>> display) -< f1
     f2 <- hSlider (1, 2000) 440 -< ()
     _ <- leftRight (label "Freq 2: " >>> display) -< f2
-    d <- convertToUISF 1000 0.1 myPureSignal -< (f1, f2)
+    d <- convertToUISF sr 0.1 myAutomaton -< (f1, f2)
     let fft = listToMaybe $ catMaybes $ map (snd . fst) d
         s = map (\((s, _), t) -> (s,t)) d
     _ <- histogram (makeLayout (Stretchy 10) (Fixed 150)) -< fft
     _ <- realtimeGraph (makeLayout (Stretchy 10) (Fixed 150)) 2 Black -< s
     returnA -< ()
   where
-    squareTable = tableLinearN 2048 0 [(1024,0),(1,1),(1023,1)]
-    --myPureSignal :: SF (Double, Double) (Double, SEvent [Double])
-    myPureSignal = proc (f1, f2) -> do
-        s1 <- osc (tableSinesN 4096 [1]) 0 -< f1
-        s2 <- osc (tableSinesN 4096 [1]) 0 -< f2
+    sr = 1000 -- signal rate
+    myAutomaton = msfiToAutomaton $ proc (f1, f2) -> do
+        s1 <- osc tab1 sr -< f1
+        s2 <- osc tab2 sr -< f2
         let s = (s1 + s2)/2
         fftData <- fftA 100 256 -< s
         returnA -< (s, fftData)
 
 -- This test is run separately from the others.
-t0 :: IO ()
-t0 = runUIEx (500,600) "fft Test" fftEx
+main :: IO ()
+main = runUIEx (500,600) "FFT Example" fftEx

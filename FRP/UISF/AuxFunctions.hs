@@ -17,7 +17,7 @@ module FRP.UISF.AuxFunctions (
 --    (=>>), (->>), (.|.),
 --    snapshot, snapshot_,
 
-    Automaton, toAutomaton, 
+    Automaton, toAutomaton, msfiToAutomaton, 
     toMSF, toRealTimeMSF, 
     async
 ) where
@@ -33,6 +33,7 @@ import Data.Maybe (listToMaybe)
 -- For use with MSF Conversions
 import Control.Monad.Fix
 import FRP.UISF.Types.MSF
+import Data.Functor.Identity
 
 import Control.Concurrent.MonadIO
 import Data.IORef.MonadIO
@@ -349,24 +350,42 @@ snapshot_ = flip $ fmap . const -- same as ->>
 -- Signal Function Conversions
 --------------------------------------
 
--- It's possible to lift a simple automaton into an MSF.
-newtype Automaton a b = Automaton (a -> (b, Automaton a b))
--- Really, an automaton is equivalent to MSF Identity, but we write it this 
--- way to show the distinction in intention: MSFs are effectful, while 
--- automatons are pure.
+-- Due to the internal monad (specifically, because it could be IO), MSFs are 
+-- not necessarily pure.  Thus, when we run them, we say that they run "in 
+-- real time".  This means that the time between two samples can vary and is 
+-- inherently unpredictable.
 
+-- However, sometimes we have a pure computation that we would like to run 
+-- on a simulated clock.  This computation will expect to produce values at 
+-- specific intervals, and because it's pure, that expectation can sort of be 
+-- satisfied.
+
+-- The three functions in this section are three different ways to handle 
+-- this case.  toMSF simply lifts the pure computation and ``hopes'' 
+-- that the timing works the way you want.  As expected, this is not 
+-- recommended.  async lets the pure computation compute in its own thread, 
+-- but it puts no restrictions on speed.  toRealTimeMSF takes a signal rate 
+-- argument and attempts to mediate between real and virtual time.
+
+-- Rather than use MSF Identity as our default pure function, we present 
+-- the Automaton type:
+newtype Automaton a b = Automaton (a -> (b, Automaton a b))
+
+-- | toAutomaton lifts a pure function to an Automaton.
 toAutomaton :: (a -> b) -> Automaton a b
-toAutomaton f = g
-    where g = Automaton $ \x -> (f x, g)
+toAutomaton f = g where g = Automaton $ \a -> (f a, g)
+
+-- | msfiToAutomaton lifts a pure MSF (i.e. one in the Identity monad) to 
+--   an Automaton.
+msfiToAutomaton :: MSF Identity a b -> Automaton a b
+msfiToAutomaton (MSF msf) = Automaton $ second msfiToAutomaton . runIdentity . msf
+
 
 -- | The following two functions are for lifting SFs to MSFs.  The first 
 --   one is a quick and dirty solution, and the second one appropriately 
 --   converts a simulated time SF into a real time one.
 toMSF :: Monad m => Automaton a b -> MSF m a b
-toMSF (Automaton sf) = MSF h
-    where 
-      h a = return (b, toMSF sf')
-        where (b, sf') = sf a
+toMSF (Automaton f) = MSF $ return . second toMSF . f
 
 -- | The clockrate is the simulated rate of the input signal function.
 --   The buffer is the amount of time the given signal function is 

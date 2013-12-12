@@ -1,5 +1,5 @@
 name:           UISF
-version:        1.0.0
+version:        0.1.0
 Cabal-Version:  >= 1.8
 license:        BSD3
 license-file:   License
@@ -17,6 +17,8 @@ description:
 extra-source-files:
         ReadMe.txt,
         FRP/UISF/Examples/EnableGUI.hs
+        FRP/UISF/Examples/Pinochle.hs
+        FRP/UISF/Examples/fft.hs
 
 Library
   hs-source-dirs: .
@@ -24,7 +26,6 @@ Library
   exposed-modules: 
         FRP.UISF.Examples.Crud,
         FRP.UISF.Examples.Examples,
-        FRP.UISF.Examples.Pinochle,
         FRP.UISF.Types.MSF,
         FRP.UISF.AuxFunctions,
         FRP.UISF.SOE,
@@ -34,8 +35,6 @@ Library
         FRP.UISF
   other-modules:
   build-depends:
-        base >= 3 && < 5, containers, array,
-        arrows == 0.4.*, GLFW == 0.5.*, OpenGL, 
-        monadIO, deepseq, stm
-  if (impl(ghc >= 6.10))
-    build-depends: base >= 4 && < 5
+        base >= 4 && < 5, containers, transformers, 
+        arrows == 0.4.*, GLFW == 0.5.*, OpenGL == 2.8.*, 
+        monadIO == 0.10.*, deepseq == 1.3.*, stm == 2.4.*

@@ -73,7 +73,7 @@ This will install UISF locally for GHC.  As noted on the Haskell wiki:
 ============================
 
 UISF was created by:
-    Dan Winograd-Cort <daniel.winograd-cort@yale.edu>
+    Dan Winograd-Cort <dwc@cs.yale.edu>
 as a branch of work on Euterpea (http://haskell.cs.yale.edu/), created by:
     Paul Hudak <paul.hudak@cs.yale.edu>, 
     Eric Cheng <eric.cheng@aya.yale.edu>,

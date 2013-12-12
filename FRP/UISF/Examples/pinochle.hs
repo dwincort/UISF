@@ -1,6 +1,6 @@
 -- Author: Daniel Winograd-Cort
 -- Date Created:        unknown
--- Date Last Modified:  12/10/2013
+-- Date Last Modified:  12/12/2013
 
 -- This is a pinochle assistant.  The user enters his hand at the GUI
 -- and selects his preferred trump suit, and his meld is displayed.
@@ -11,11 +11,9 @@
 -- max in the form: 
 --  "# of kitties that produce this much meld"x"meld value":[best possible kitties]
 
+-- This module requires the array package.
 
--- TODO
--- - Move the GUI to the web browser?
-
--- make sure to use "ghc --make -O2 pinochle.hs"
+-- make sure to use "ghc --make -O2 pinochle.hs" for pest performance
 
 {-# LANGUAGE Arrows, BangPatterns #-}
 module FRP.UISF.Examples.Pinochle where
