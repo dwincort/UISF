@@ -22,9 +22,10 @@ import FRP.UISF hiding (accum)
 import Data.List (delete, foldl', group)
 import GHC.Arr (Ix(..), indexError)
 import Data.Array
+import Data.List (transpose)
 
 
-main = runUIEx (600,700) "Pinochole Assistant" pinochleSF
+main = runUIEx (800,600) "Pinochole Assistant" pinochleSF
 
 data Card = Card Suit Number
     deriving (Eq, Ord)
@@ -107,29 +108,30 @@ pinochleSF = proc _ -> do
             (False, 11) -> Just $ show 4
             (False, 15) -> Just $ show 3
             _ -> Nothing
+    restr <- checkbox "Restrict trump suit?" False -< ()
     b <- edge <<< button "Calculate meld from kitty" -< ()
     --let kre = Nothing
-    kre <- (asyncUISF $ toAutomaton $ uncurry kittyResult) -< fmap (const (hand, kittenSizeStr)) b
+    kre <- (asyncUISF $ toAutomaton $ uncurry $ uncurry kittyResult) -< 
+            fmap (const ((hand, kittenSizeStr), if restr then Just trump else Nothing)) b
     k <- hold [] -< maybe (fmap (const ["Calculating ..."]) b) Just kre
     displayStrList -< k
     returnA -< ()
 
-kittyResult :: Hand -> String -> [String]
-kittyResult _ s | null (reads s :: [(Int,String)]) = ["Unable to parse kitty size"]
-kittyResult hand s | handLength hand + fst (head (reads s :: [(Int,String)])) > handLength deckArray = ["Kitty size + hand size > deck size"]
-kittyResult hand s = ("Mean = " ++ show meanMeld ++ ", Max = " 
+kittyResult :: Hand -> String -> Maybe Suit -> [String]
+kittyResult _ s _ | null (reads s :: [(Int,String)]) = ["Unable to parse kitty size"]
+kittyResult hand s _ | handLength hand + fst (head (reads s :: [(Int,String)])) > handLength deckArray = 
+    ["Kitty size + hand size > deck size"]
+kittyResult hand s trump = ("Mean = " ++ show meanMeld ++ ", Max = " 
                      ++ show (fst4 $ head maxMeld) ++ " with " ++ show (sum $ map thd4 maxMeld) ++ " options:"):
                      map (\m -> show (thd4 m) ++ " of " ++ show (snd4 m) ++ " with " ++ show (fth4 m) ++ " as trump") maxMeld
   where
     kittySize = fst (head (reads s :: [(Int,String)]))
     restOfDeck = complementHand hand
     kitties = possibleKitties kittySize restOfDeck
-    meldsS = map (calc Spades hand) kitties
-    meldsH = map (calc Hearts hand) kitties
-    meldsD = map (calc Diamonds hand) kitties
-    meldsC = map (calc Clubs hand) kitties
+    getSuitMelds s = map (calc s hand) kitties
     allMelds :: [(Int, [Card], Int, Suit)]
-    allMelds = meldsS ++ meldsH ++ meldsD ++ meldsC
+    allMelds = maybe allMelds' getSuitMelds trump
+    allMelds' = concatMap (fst . meldStats) $ transpose $ map getSuitMelds [Spades, Hearts, Diamonds, Clubs]
     -- meldStats returns the pair (list of all best melds, (sum of all melds, count of all melds))
     meldStats = foldl' (\(a@((v,_,_,_):_),(s,c)) b@(v2,_,r,_) -> seq s $ seq c ((case compare v v2 of
                             LT -> [b]
