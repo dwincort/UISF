@@ -17,7 +17,7 @@ module FRP.UISF.AuxFunctions (
 --    (=>>), (->>), (.|.),
 --    snapshot, snapshot_,
 
-    Automaton, toAutomaton, msfiToAutomaton, 
+    Automaton(..), toAutomaton, msfiToAutomaton, 
     toMSF, toRealTimeMSF, 
     async
 ) where

@@ -3,7 +3,7 @@ module FRP.UISF
     UISF 
   , runUI'              -- :: String -> UISF () () -> IO ()
   , runUI               -- :: Dimension -> String -> UISF () () -> IO ()
-  , convertToUISF       -- :: NFData b => Integer -> Int -> SF a b -> UISF a ([b], Bool)
+  , convertToUISF       -- :: NFData b => Double -> Double -> SF a b -> UISF a ([b], Bool)
   , asyncUISF           -- :: NFData b => Automaton a b -> UISF (SEvent a) (SEvent b)
   , Dimension           -- type Dimension = (Int, Int)
   , topDown, bottomUp, leftRight, rightLeft    -- :: UISF a b -> UISF a b

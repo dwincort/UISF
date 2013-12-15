@@ -29,6 +29,10 @@ earlier widgets and maps input signals to outputs, which consists of 6 parts:
 >   { unUI :: (CTX, Focus, Time, UIEvent) -> 
 >             IO (Layout, DirtyBit, Focus, Action, ControlData, a) }
 
+For reexporting:
+
+> ioToUI :: IO a -> UI a
+> ioToUI = liftIO
 
 ============================================================
 ======================= Control Data =======================
@@ -37,7 +41,6 @@ earlier widgets and maps input signals to outputs, which consists of 6 parts:
 > type ControlData = [ThreadId]
 > nullCD :: ControlData
 > nullCD = []
-
 
 > addThreadID :: ThreadId -> UI ()
 > addThreadID t = UI (\(_,f,_,_) -> return (nullLayout, False, f, nullAction, [t], ()))
