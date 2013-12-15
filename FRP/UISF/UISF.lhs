@@ -213,11 +213,11 @@ Some default parameters we start with.
 > resetFocus (n,SetFocusTo i) = (0, SetFocusTo $ (i+n) `rem` n)
 > resetFocus (_,_) = (0,NoFocus)
 
-> runUI   ::              String -> UISF () () -> IO ()
-> runUI = runUIEx defaultSize
+> runUI' ::              String -> UISF () () -> IO ()
+> runUI' = runUI defaultSize
 
-> runUIEx :: Dimension -> String -> UISF () () -> IO ()
-> runUIEx windowSize title sf = runGraphics $ do
+> runUI  :: Dimension -> String -> UISF () () -> IO ()
+> runUI windowSize title sf = runGraphics $ do
 >   w <- openWindowEx title (Just (0,0)) (Just windowSize) drawBufferedGraphic
 >   (events, addEv) <- makeStream
 >   let pollEvents = windowUser w addEv
@@ -252,8 +252,6 @@ Some default parameters we start with.
 >   -- wait a little while before all Midi messages are flushed
 >   GLFW.sleep 0.5
 >   mapM_ killThread tids
-
-runMUIEx windowSize title sf = initializeMidi >> runUIEx windowSize title sf >> terminateMidi
 
 > windowUser :: Window -> (UIEvent -> IO ()) -> IO Bool
 > windowUser w addEv = do 

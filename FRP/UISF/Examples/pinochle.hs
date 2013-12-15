@@ -25,7 +25,7 @@ import Data.Array
 import Data.List (transpose)
 
 
-main = runUIEx (800,600) "Pinochole Assistant" pinochleSF
+main = runUI (800,600) "Pinochole Assistant" pinochleSF
 
 data Card = Card Suit Number
     deriving (Eq, Ord)

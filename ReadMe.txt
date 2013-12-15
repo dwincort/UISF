@@ -29,7 +29,10 @@ When we reach milestones, we will release stable versions to Hackage.
 ======= Installation =======
 ============================
 
-Installing from source RECOMMENDED
+Installing From Hackage RECOMMENDED
+    cabal install UISF
+
+Installing from source
 
   1) Clone the source from github
      git clone https://github.com/dwincort/UISF

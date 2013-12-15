@@ -1,16 +1,15 @@
 module FRP.UISF
   ( -- UI functions
     UISF 
+  , runUI'              -- :: String -> UISF () () -> IO ()
+  , runUI               -- :: Dimension -> String -> UISF () () -> IO ()
   , convertToUISF       -- :: NFData b => Integer -> Int -> SF a b -> UISF a ([b], Bool)
-  , asyncUISF           -- :: Automaton a b -> UISF (SEvent a) (SEvent b)
+  , asyncUISF           -- :: NFData b => Automaton a b -> UISF (SEvent a) (SEvent b)
   , Dimension           -- type Dimension = (Int, Int)
-  , Rect                -- type Rect = (Point, Dimension)
   , topDown, bottomUp, leftRight, rightLeft    -- :: UISF a b -> UISF a b
   , setSize             -- :: Dimension -> UISF a b -> UISF a b
   , setLayout           -- :: Layout -> UISF a b -> UISF a b
   , pad                 -- :: (Int, Int, Int, Int) -> UISF a b -> UISF a b
-  , runUI               -- :: String -> UISF () () -> IO ()
-  , runUIEx             -- :: Dimension -> String -> UISF () () -> IO ()
   , getTime             -- :: UISF () Time
     -- Widgets
   , label               -- :: String -> UISF a a

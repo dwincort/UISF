@@ -135,4 +135,4 @@ fftEx = proc _ -> do
 
 -- This test is run separately from the others.
 main :: IO ()
-main = runUIEx (500,600) "FFT Example" fftEx
+main = runUI (500,600) "FFT Example" fftEx
