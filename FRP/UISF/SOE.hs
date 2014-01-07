@@ -1,4 +1,5 @@
 module FRP.UISF.SOE (
+  -- * Window Functions
   runGraphics,
   Title,
   Size,
@@ -13,6 +14,7 @@ module FRP.UISF.SOE (
   setDirty,
   closeWindow,
   openWindowEx,
+  -- * Drawing Functions
   RedrawMode,
   drawGraphic,
   drawBufferedGraphic,
@@ -52,6 +54,7 @@ module FRP.UISF.SOE (
 --  getKey,     -- See note at definition for why these are left out
 --  getLBP,
 --  getRBP,
+  -- * Event Handling Functions
   Key(..),
   SpecialKey (..),
   UIEvent (..),
@@ -108,11 +111,11 @@ type Title = String
 type Size = (Int, Int)
 
 data Window = Window {
-  graphicVar :: MVar (Graphic, Bool), -- boolean to remember if it's dirty
+  graphicVar :: MVar (Graphic, Bool), -- ^ boolean to remember if it's dirty
   eventsChan :: TChan UIEvent
 }
 
--- Graphic is just a wrapper for OpenGL IO
+-- | Graphic is just a wrapper for OpenGL IO
 newtype Graphic = Graphic (IO ())
 
 initialized, opened :: MVar Bool
@@ -209,7 +212,7 @@ drawInWindow win graphic =
   modifyMVar_ (graphicVar win) (\ (g, _) -> 
     return (overGraphic graphic g, True)) 
 
--- if window is marked as dirty, mark it clean, draw and swap buffer;
+-- | if window is marked as dirty, mark it clean, draw and swap buffer;
 -- otherwise do nothing.
 updateWindowIfDirty :: Window -> IO ()
 updateWindowIfDirty win = do
@@ -222,7 +225,7 @@ drawInWindowNow win graphic = do
   drawInWindow win graphic
   updateWindowIfDirty win
 
--- setGraphic set the given Graphic over empty (black) background for
+-- | setGraphic set the given Graphic over empty (black) background for
 -- display in current Window.
 setGraphic :: Window -> Graphic -> IO ()
 setGraphic win graphic = 
@@ -601,7 +604,7 @@ getLastResizeEvent ch prev = do
       Just e -> atomically (unGetTChan ch e) >> return prev
 
 
--- | getKeyEx, getKey, getButton, getLBP, and getRBP are defined here but 
+--  getKeyEx, getKey, getButton, getLBP, and getRBP are defined here but 
 --  never used in Euterpea.  Furthermore, due to the change in getWindowEvent 
 --  so that it now requires a sleepTime argument (previously fixed at 0.01), 
 --  they either need to be parameterized over sleepTime or set.  I'm not 
@@ -639,14 +642,14 @@ getRBP :: Window -> IO Point
 getRBP w = getButton w 2 True
 -}
 
--- use GLFW's high resolution timer
+-- | use GLFW's high resolution timer
 timeGetTime :: IO Double
 timeGetTime = GL.get GLFW.time
 
 word32ToInt :: Word32 -> Int
 word32ToInt = fromIntegral
 
--- Designed to be used with Key, CharKey, or SpecialKey
+-- | Designed to be used with Key, CharKey, or SpecialKey
 isKeyPressed :: Enum a => a -> IO Bool
 isKeyPressed k = do
     kbs <- GLFW.getKey k

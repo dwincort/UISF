@@ -1,23 +1,45 @@
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  FRP.UISF.AuxFunctions
+-- Copyright   :  (c) Daniel Winograd-Cort 2014
+-- License     :  see the LICENSE file in the distribution
+--
+-- Maintainer  :  dwc@cs.yale.edu
+-- Stability   :  experimental
+--
+-- Auxiliary functions for use with UISF or other arrows.
+
 {-# LANGUAGE Arrows, ScopedTypeVariables #-}
 
 module FRP.UISF.AuxFunctions (
+    -- * Types
     SEvent, Time, DeltaT, 
     ArrowTime, time, 
+    -- * Useful SF Utilities (Mediators)
     constA, 
     edge, 
     accum, unique, 
     hold, now, 
     mergeE, (~++), 
     concatA, foldA, 
-    delay, vdelay, fdelay, 
+    -- * Delays and Timers
+    delay, 
+    -- | delay is a unit delay.  It is exactly the delay from ArrowCircuit.
+    vdelay, fdelay, 
     vdelayC, fdelayC, 
     timer, genEvents, 
-    BufferEvent (..), BufferControl, eventBuffer, 
+    -- * Event buffer
+    BufferEvent (..), Tempo, BufferControl, eventBuffer, 
     
 --    (=>>), (->>), (.|.),
 --    snapshot, snapshot_,
 
+    -- * Signal Function Conversions
+    -- $conversions
+    -- ** Types
     Automaton(..), toAutomaton, msfiToAutomaton, 
+    -- *** Conversions
+    -- $conversions2
     toMSF, toRealTimeMSF, 
     async
 ) where
@@ -45,9 +67,10 @@ import Control.DeepSeq
 -- Types
 --------------------------------------
 
--- | SEvent is short for "Stream Event" and is a type synonym for Maybe
+-- | SEvent is short for \"Stream Event\" and is a type synonym for Maybe.
 type SEvent = Maybe
 
+-- | Time is simply represented as a Double.
 type Time = Double 
 
 -- | DeltaT is a type synonym referring to a change in Time.
@@ -117,6 +140,8 @@ quantize n k = proc d -> do
     rec (ds,c) <- delay ([],0) -< (take n (d:ds), c+1)
     returnA -< if c >= n && c `mod` k == 0 then Just ds else Nothing
 
+-- | Combines the input list of arrows into one arrow that tajes a 
+--   list of inputs and returns a list of outputs.
 concatA :: Arrow a => [a b c] -> a [b] [c]
 concatA [] = arr $ const []
 concatA (sf:sfs) = proc (b:bs) -> do
@@ -124,6 +149,9 @@ concatA (sf:sfs) = proc (b:bs) -> do
     cs <- concatA sfs -< bs
     returnA -< (c:cs)
 
+-- | This essentially allows an arrow that processes b to c to take 
+--   [b] and recursively generate cs, combining them all into a 
+--   final output d.
 foldA :: ArrowChoice a => (c -> d -> d) -> d -> a b c -> a [b] d
 foldA merge i sf = h where 
   h = proc inp -> case inp of
@@ -195,7 +223,7 @@ fdelayC i dt = proc v -> do
 --   older value if necessary).  Be warned that this version of delay can 
 --   both omit some data entirely and emit the same data multiple times.  
 --   As such, it is usually inappropriate for events (use vdelay).
---   vdelayC takes a "maxDT" argument that stands for the maximum delay 
+--   vdelayC takes a 'maxDT' argument that stands for the maximum delay 
 --   time that it can handle.  This is to prevent a space leak.
 --   
 --   Implementation note: Rather than keep a single buffer, we keep two 
@@ -268,15 +296,20 @@ genEvents lst = proc dt -> do
 -- Event buffer
 --------------------------------------
 
+-- | The BufferEvent data type is used in tandem with 'BufferControl' 
+--   to provide the right control information to 'eventBuffer'.
 data BufferEvent b = 
-      Clear -- Erase the buffer
-    | SkipAhead DeltaT  -- Skip ahead a certain amount of time in the buffer
-    | AddData      [(DeltaT, b)]    -- Merge data into the buffer
-    | AddDataToEnd [(DeltaT, b)]    -- Add data to the end of the buffer
+      Clear -- ^ Erase the buffer
+    | SkipAhead DeltaT  -- ^ Skip ahead a certain amount of time in the buffer
+    | AddData      [(DeltaT, b)]    -- ^ Merge data into the buffer
+    | AddDataToEnd [(DeltaT, b)]    -- ^ Add data to the end of the buffer
+
+-- | Tempo is just a Double.
 type Tempo = Double
+
+-- | BufferControl has a Buffer event, a bool saying whether to Play (true) or 
+--   Pause (false), and a tempo multiplier.
 type BufferControl b = (SEvent (BufferEvent b), Bool, Tempo)
---  BufferControl has a Buffer event, a bool saying whether to Play (true) or 
---  Pause (false), and a tempo multiplier.
 
 -- | eventBuffer allows for a timed series of events to be prepared and 
 --   emitted.  The streaming input is a BufferControl, described above.  
@@ -350,23 +383,24 @@ snapshot_ = flip $ fmap . const -- same as ->>
 -- Signal Function Conversions
 --------------------------------------
 
+-- $conversions
 -- Due to the internal monad (specifically, because it could be IO), MSFs are 
--- not necessarily pure.  Thus, when we run them, we say that they run "in 
--- real time".  This means that the time between two samples can vary and is 
+-- not necessarily pure.  Thus, when we run them, we say that they run \"in 
+-- real time\".  This means that the time between two samples can vary and is 
 -- inherently unpredictable.
-
+-- 
 -- However, sometimes we have a pure computation that we would like to run 
 -- on a simulated clock.  This computation will expect to produce values at 
 -- specific intervals, and because it's pure, that expectation can sort of be 
 -- satisfied.
-
+-- 
 -- The three functions in this section are three different ways to handle 
--- this case.  toMSF simply lifts the pure computation and ``hopes'' 
+-- this case.  toMSF simply lifts the pure computation and \"hopes\" 
 -- that the timing works the way you want.  As expected, this is not 
 -- recommended.  async lets the pure computation compute in its own thread, 
 -- but it puts no restrictions on speed.  toRealTimeMSF takes a signal rate 
 -- argument and attempts to mediate between real and virtual time.
-
+-- 
 -- Rather than use MSF Identity as our default pure function, we present 
 -- the Automaton type:
 newtype Automaton a b = Automaton (a -> (b, Automaton a b))
@@ -381,9 +415,13 @@ msfiToAutomaton :: MSF Identity a b -> Automaton a b
 msfiToAutomaton (MSF msf) = Automaton $ second msfiToAutomaton . runIdentity . msf
 
 
--- | The following two functions are for lifting SFs to MSFs.  The first 
---   one is a quick and dirty solution, and the second one appropriately 
---   converts a simulated time SF into a real time one.
+-- $conversions2
+-- The following two functions are for lifting SFs to MSFs.  The first 
+-- one is a quick and dirty solution, and the second one appropriately 
+-- converts a simulated time SF into a real time one.
+
+-- | This function should be avoided, as it directly converts the automaton 
+--   with no real regard for time.
 toMSF :: Monad m => Automaton a b -> MSF m a b
 toMSF (Automaton f) = MSF $ return . second toMSF . f
 
@@ -398,10 +436,13 @@ toMSF (Automaton f) = MSF $ return . second toMSF . f
 --   Note that the returned list may be long if the clockrate is much 
 --   faster than real time and potentially empty if it's slower.
 --   Note also that the caller can check the time stamp on the element 
---   at the end of the list to see if the inner, "simulated" signal 
+--   at the end of the list to see if the inner, \"simulated\" signal 
 --   function is performing as fast as it should.
 toRealTimeMSF :: forall m a b . (Monad m, MonadIO m, MonadFix m, NFData b) => 
-                 Double -> DeltaT -> (ThreadId -> m ()) -> Automaton a b 
+                 Double             -- ^ Clockrate
+              -> DeltaT             -- ^ Amount of time to buffer
+              -> (ThreadId -> m ()) -- ^ The thread handler
+              -> Automaton a b      -- ^ The automaton to convert to realtime
               -> MSF m (a, Double) [(b, Double)]
 toRealTimeMSF clockrate buffer threadHandler sf = MSF initFun
   where
@@ -442,14 +483,16 @@ toRealTimeMSF clockrate buffer threadHandler sf = MSF initFun
 --   b whenever they are ready.  The input SF is expected to run slowly 
 --   compared to the output MSF, but it is capable of running just as fast.
 --
---   Might we practically want a way to "clear the buffer" if we accidentally 
+--   Might we practically want a way to \"clear the buffer\" if we accidentally 
 --   queue up too many async inputs?
 --   Perhaps the output should be something like:
 --   data AsyncOutput b = None | Calculating Int | Value b
 --   where the Int is the size of the buffer.  Similarly, we could have
 --   data AsyncInput  a = None | ClearBuffer | Value a
 async :: forall m a b. (Monad m, MonadIO m, MonadFix m, NFData b) => 
-                 (ThreadId -> m ()) -> Automaton a b -> MSF m (SEvent a) (SEvent b)
+                 (ThreadId -> m ()) -- ^ The thread handler
+              -> Automaton a b      -- ^ The automaton to convert to asynchronize
+              -> MSF m (SEvent a) (SEvent b)
 async threadHandler sf = delay Nothing >>> MSF initFun
   where
     -- initFun creates some refs and threads and is never used again.

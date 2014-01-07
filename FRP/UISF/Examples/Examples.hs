@@ -14,11 +14,11 @@ import FRP.UISF.SOE (withColor', rgb, polygon)
 import Numeric (showHex)
 import Data.Maybe (listToMaybe, catMaybes)
 
--- This example displays the time from the start of the GUI application.
+-- | This example displays the time from the start of the GUI application.
 timeEx :: UISF () ()
 timeEx = title "Time" $ getTime >>> display
 
--- This example shows off buttons and state by presenting a plus and 
+-- | This example shows off buttons and state by presenting a plus and 
 -- minus button with a counter that is adjusted by them.
 buttonEx :: UISF () ()
 buttonEx = title "Buttons" $ proc _ -> do
@@ -32,7 +32,7 @@ buttonEx = title "Buttons" $ proc _ -> do
             _ -> v)
   display -< v
 
--- This example shows off the checkbox widgets.
+-- | This example shows off the checkbox widgets.
 checkboxEx :: UISF () ()
 checkboxEx = title "Checkboxes" $ proc _ -> do
   x <- checkbox "Monday" False -< ()
@@ -44,20 +44,20 @@ checkboxEx = title "Checkboxes" $ proc _ -> do
     bin True = "1"
     bin False = "0"
 
--- This example shows off the radio button widget.
+-- | This example shows off the radio button widget.
 radioButtonEx :: UISF () ()
 radioButtonEx = title "Radio Buttons" $ radio list 0 >>> arr (list!!) >>> displayStr
   where
     list = ["apple", "orange", "banana"]
 
--- This example shows off integral sliders (horizontal in the case).
+-- | This example shows off integral sliders (horizontal in the case).
 shoppinglist :: UISF () ()
 shoppinglist = title "Shopping List" $ proc _ -> do
   a <- title "apples"  $ hiSlider 1 (0,10) 3 -< ()
   b <- title "bananas" $ hiSlider 1 (0,10) 7 -< () 
   title "total" $ display -< (a + b)
 
--- This example shows off both vertical sliders as well as the canvas 
+-- | This example shows off both vertical sliders as well as the canvas 
 -- widget.  The canvas widget can be used to easily create custom graphics 
 -- in the GUI.  Here, it is used to make a color swatch that is 
 -- controllable with RGB values by the sliders.
@@ -78,7 +78,7 @@ colorDemo = setSize (300, 220) $ title "Color" $ pad (4,0,4,0) $ leftRight $ pro
       returnA -< v
     box ((x,y), (w, h)) = polygon [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
 
--- This example shows off the textbox widget.  Text can be typed in, and 
+-- | This example shows off the textbox widget.  Text can be typed in, and 
 -- that text is transferred to the display widget below when the button 
 -- is pressed.
 textboxdemo :: UISF () ()
@@ -89,7 +89,7 @@ textboxdemo = proc _ -> do
   leftRight $ label "Saved value: " >>> displayStr -< str' 
   returnA -< ()
 
--- This is the main demo that incorporates all of the other examples 
+-- | This is the main demo that incorporates all of the other examples 
 -- together (except for fftEx).  In addition to demonstrating how 
 -- different widgets can connect, it also shows off the tabbing 
 -- behavior built in to the GUI.  Pressing tab cycles through focuable 

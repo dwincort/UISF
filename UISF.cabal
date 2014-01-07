@@ -1,5 +1,5 @@
 name:           UISF
-version:        0.1.0
+version:        0.1.0.0
 Cabal-Version:  >= 1.8
 license:        BSD3
 license-file:   License
@@ -20,9 +20,12 @@ extra-source-files:
         FRP/UISF/Examples/Pinochle.hs
         FRP/UISF/Examples/fft.hs
 
+source-repository head
+  type:     git
+  location: https://github.com/dwincort/UISF.git
+
 Library
   hs-source-dirs: .
-  ghc-options: -O2 -funbox-strict-fields
   exposed-modules: 
         FRP.UISF.Examples.Crud,
         FRP.UISF.Examples.Examples,

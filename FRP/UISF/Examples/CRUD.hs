@@ -42,6 +42,7 @@ defaultnames = [
 
 -- | This function will run the crud GUI with the default names.
 crud = runUI (350, 400) "CRUD" (crudUISF defaultnames)
+-- | main = crud
 main = crud
 
 -- | This is the main function that creates the crud GUI.  It takes an 
