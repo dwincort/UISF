@@ -1,9 +1,9 @@
 name:           UISF
-version:        0.1.0.0
+version:        0.1.0.1
 Cabal-Version:  >= 1.8
 license:        BSD3
 license-file:   License
-copyright:      Copyright (c) 2013 Daniel Winograd-Cort
+copyright:      Copyright (c) 2014 Daniel Winograd-Cort
 category:       GUI
 stability:      experimental
 build-type:     Simple

@@ -16,12 +16,12 @@ module FRP.UISF.AuxFunctions (
     SEvent, Time, DeltaT, 
     ArrowTime, time, 
     -- * Useful SF Utilities (Mediators)
-    constA, 
+    constA, constSF, 
     edge, 
     accum, unique, 
     hold, now, 
     mergeE, (~++), 
-    concatA, foldA, 
+    concatA, foldA, foldSF, 
     -- * Delays and Timers
     delay, 
     -- | delay is a unit delay.  It is exactly the delay from ArrowCircuit.
@@ -87,6 +87,10 @@ class ArrowTime a where
 -- | constA is an arrowized version of const
 constA  :: Arrow a => c -> a b c
 constA = arr . const
+
+-- | constSF is a convenience
+constSF :: Arrow a => b -> a b d -> a c d
+constSF s sf = constA s >>> sf
 
 -- | edge generates an event whenever the Boolean input signal changes
 --   from False to True -- in signal processing this is called an ``edge
@@ -160,6 +164,16 @@ foldA merge i sf = h where
         c <- sf -< b
         d <- h  -< bs
         returnA -< merge c d
+
+-- | For folding results of a list of signal functions
+foldSF ::  Arrow a => (b -> c -> c) -> c -> [a () b] -> a () c
+foldSF f b sfs =
+  foldr g (constA b) sfs where
+    g sfa sfb =
+      proc () -> do
+        s1  <- sfa -< ()
+        s2  <- sfb -< ()
+        returnA -< f s1 s2
 
 
 --------------------------------------
