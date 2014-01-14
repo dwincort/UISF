@@ -19,9 +19,14 @@
 module FRP.UISF.Examples.Pinochle where
 import FRP.UISF hiding (accum)
 
+-- We make our own special type of button for inputting hand information, 
+-- so we import a few things directly from Widget and SOE.
+import FRP.UISF.Widget (cyclebox, padding, (//), whenG, box, marked, pushed, popped)
+import FRP.UISF.SOE (text, withColor)
+
 import Data.List (delete, foldl', group)
 import GHC.Arr (Ix(..), indexError)
-import Data.Array
+import Data.Array hiding ((//))
 import Data.List (transpose)
 
 
@@ -50,7 +55,8 @@ data Number = Nine | Jack | Queen | King | Ten | Ace
 
 allSuits = [Spades, Hearts, Diamonds, Clubs]
 --nums = [Nine, Nine, Jack, Jack, Queen, Queen, King, King, Ten, Ten, Ace, Ace]
-nums = [Ace, Ace, Ten, Ten, King, King, Queen, Queen, Jack, Jack, Nine, Nine]
+--nums = [Ace, Ace, Ten, Ten, King, King, Queen, Queen, Jack, Jack, Nine, Nine]
+nums = [Ace, Ten, King, Queen, Jack, Nine]
 
 type Hand = Array Card Int
 
@@ -89,15 +95,15 @@ instance ShortShow a => ShortShow [a] where
 
 pinochleSF :: UISF () ()
 pinochleSF = proc _ -> do
-    spadeB   <- title "Spades"   $ leftRight $ mapA $ map (stickyButton . show) nums -< repeat ()
-    heartB   <- title "Hearts"   $ leftRight $ mapA $ map (stickyButton . show) nums -< repeat ()
-    diamondB <- title "Diamonds" $ leftRight $ mapA $ map (stickyButton . show) nums -< repeat ()
-    clubB    <- title "Clubs"    $ leftRight $ mapA $ map (stickyButton . show) nums -< repeat ()
+    spadeB   <- title "Spades"   $ leftRight $ concatA $ map (cardSelector . show) nums -< repeat ()
+    heartB   <- title "Hearts"   $ leftRight $ concatA $ map (cardSelector . show) nums -< repeat ()
+    diamondB <- title "Diamonds" $ leftRight $ concatA $ map (cardSelector . show) nums -< repeat ()
+    clubB    <- title "Clubs"    $ leftRight $ concatA $ map (cardSelector . show) nums -< repeat ()
     trump    <- leftRight $ label "Choose Trump:" >>> radio (map show allSuits) 0 >>> arr toEnum -< ()
-    let spades   = [n | (b,n) <- zip spadeB   nums, b]
-        hearts   = [n | (b,n) <- zip heartB   nums, b]
-        diamonds = [n | (b,n) <- zip diamondB nums, b]
-        clubs    = [n | (b,n) <- zip clubB    nums, b]
+    let spades   = concat $ zipWith replicate spadeB nums
+        hearts   = concat $ zipWith replicate heartB nums
+        diamonds = concat $ zipWith replicate diamondB nums
+        clubs    = concat $ zipWith replicate clubB nums
         hand = addToHand emptyHand $ map (Card Spades) spades ++ map (Card Hearts) hearts ++ map (Card Diamonds) diamonds ++ map (Card Clubs) clubs 
     (trump',hand') <- delay (Spades,emptyHand) -< (trump,hand)
     rec meld <- delay [] -< if hand == hand' && trump == trump' then meld else getMeld trump hand
@@ -228,17 +234,23 @@ getMeld trump hand =
              (["Pinochle","Double Pinochle"], [4,30], [Card Diamonds Jack, Card Spades Queen]),
              (["9 of Trump","2x9s of Trump"], [1,2], [Card trump Nine])]
 
-        
-     
 
-
-
-mapA :: Arrow a => [a b c] -> a [b] [c]
-mapA [] = arr $ const []
-mapA (sf:sfs) = proc (b:bs) -> do
-    c <- sf -< b
-    cs <- mapA sfs -< bs
-    returnA -< (c:cs)
+-- cardSelector is a widget that looks kind of like a button except that 
+-- in its unpressed state, it shows 0, when it's pressed once, it shows 
+-- 1, and when it's pressed twice, it shows 2.  A third press resets it.
+-- It takes as argument the names of the cards to select.
+cardSelector :: String -> UISF () Int
+cardSelector str = cyclebox d lst 0 where
+    (tw, th) = (8 * (length str + 3), 16) 
+    (minw, minh) = (tw + padding * 2, th + padding * 2)
+    d = makeLayout (Stretchy minw) (Fixed minh)
+    draw (i, s) b@((x,y), (w,h)) inFocus = 
+      let x' = x + (w - tw) `div` 2 + if i>0 then 0 else -1
+          y' = y + (h - th) `div` 2 + if i>0 then 0 else -1
+      in withColor Black (text (x', y') s) 
+         // whenG inFocus (box marked b)
+         // box (if i>0 then pushed else popped) b
+    lst = zip (map draw [(0,"0 "++str++"s"), (1, "1 "++str), (2, "2 "++str++"s")]) [0,1,2]
 
 
 fst3 (a,b,c) = a

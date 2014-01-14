@@ -612,6 +612,27 @@ canvas' layout draw = mkWidget Nothing layout process drawit
     process Nothing  a _ _ = ((), a, False)
 
 
+---------------
+-- Cycle Box --
+---------------
+-- | cyclebox is a clickable widget that cycles through a predefined set 
+--   set of appearances/output values
+cyclebox :: Layout -> [(Rect -> Bool -> Graphic, b)] -> Int -> UISF () b
+cyclebox d lst start = focusable $ 
+  mkWidget start d process draw
+  where
+    len = length lst
+    incr i = (i+1) `mod` len
+    draw b inFocus i = (fst (lst!!i)) b inFocus
+    process _ i b evt = (snd (lst!!i'), i', i /= i')
+      where 
+        i' = case evt of
+          Button _ True True -> incr i
+          SKey ENTER _ True -> incr i
+          Key ' ' _ True -> incr i
+          _ -> i
+
+
 ------------------------------------------------------------
 -- * Focus
 ------------------------------------------------------------
