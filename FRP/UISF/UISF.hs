@@ -46,7 +46,8 @@ import FRP.UISF.UIMonad
 
 import FRP.UISF.Types.MSF
 import FRP.UISF.AuxFunctions (Automaton, Time, toMSF, toRealTimeMSF, 
-                              async, SEvent, ArrowTime (..))
+                              SEvent, ArrowTime (..),
+                              async, AsyncInput (..), AsyncOutput (..))
 
 import Control.Monad (when)
 import qualified Graphics.UI.GLFW as GLFW (sleep, SpecialKey (..))
@@ -182,8 +183,9 @@ convertToUISF clockrate buffer sf = proc a -> do
   t <- time -< ()
   toRealTimeMSF clockrate buffer addThreadID sf -< (a, t)
 
+
 -- | We can also lift a signal function to a UISF asynchronously.
-asyncUISF :: NFData b => Automaton a b -> UISF (SEvent a) (SEvent b)
+asyncUISF :: NFData b => Automaton a b -> UISF (AsyncInput a) (AsyncOutput b)
 asyncUISF = async addThreadID
 
 

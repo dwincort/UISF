@@ -4,7 +4,9 @@ module FRP.UISF
   , runUI'              -- :: String -> UISF () () -> IO ()
   , runUI               -- :: Dimension -> String -> UISF () () -> IO ()
   , convertToUISF       -- :: NFData b => Double -> Double -> SF a b -> UISF a ([b], Bool)
-  , asyncUISF           -- :: NFData b => Automaton a b -> UISF (SEvent a) (SEvent b)
+  , asyncUISF           -- :: NFData b => Automaton a b -> UISF (ASyncInput a) (ASyncOutput b)
+  , AsyncInput (..)     -- data AsyncInput a = AINoValue | AIClearBuffer | AIValue a
+  , AsyncOutput (..)    -- data AsyncOutput b = AONoValue | AOCalculating Int | AOValue b
   , Dimension           -- type Dimension = (Int, Int)
   , topDown, bottomUp, leftRight, rightLeft    -- :: UISF a b -> UISF a b
   , setSize             -- :: Dimension -> UISF a b -> UISF a b
@@ -28,6 +30,7 @@ module FRP.UISF
   , hiSlider, viSlider  -- :: Integral a => a -> (a, a) -> a -> UISF () a
   , realtimeGraph       -- :: RealFrac a => Layout -> Time -> Color -> UISF (Time, [(a,Time)]) ()
   , histogram           -- :: RealFrac a => Layout -> UISF (Event [a]) ()
+  , histogramWithScale  -- :: RealFrac a => Layout -> UISF (SEvent [(a,String)]) ()
   , listbox             -- :: (Eq a, Show a) => UISF ([a], Int) Int
   , canvas              -- :: Dimension -> UISF (Event Graphic) ()
   , canvas'             -- :: Layout -> (a -> Dimension -> Graphic) -> UISF (Event a) ()

@@ -41,7 +41,7 @@ module FRP.UISF.AuxFunctions (
     -- *** Conversions
     -- $conversions2
     toMSF, toRealTimeMSF, 
-    async
+    async, AsyncInput(..), AsyncOutput(..)
 ) where
 
 import Prelude
@@ -144,7 +144,7 @@ quantize n k = proc d -> do
     rec (ds,c) <- delay ([],0) -< (take n (d:ds), c+1)
     returnA -< if c >= n && c `mod` k == 0 then Just ds else Nothing
 
--- | Combines the input list of arrows into one arrow that tajes a 
+-- | Combines the input list of arrows into one arrow that takes a 
 --   list of inputs and returns a list of outputs.
 concatA :: Arrow a => [a b c] -> a [b] [c]
 concatA [] = arr $ const []
@@ -430,9 +430,9 @@ msfiToAutomaton (MSF msf) = Automaton $ second msfiToAutomaton . runIdentity . m
 
 
 -- $conversions2
--- The following two functions are for lifting SFs to MSFs.  The first 
+-- The following two functions are for lifting Automatons to MSFs.  The first 
 -- one is a quick and dirty solution, and the second one appropriately 
--- converts a simulated time SF into a real time one.
+-- converts a simulated time Automaton into a real time one.
 
 -- | This function should be avoided, as it directly converts the automaton 
 --   with no real regard for time.
@@ -457,7 +457,7 @@ toRealTimeMSF :: forall m a b . (Monad m, MonadIO m, MonadFix m, NFData b) =>
               -> DeltaT             -- ^ Amount of time to buffer
               -> (ThreadId -> m ()) -- ^ The thread handler
               -> Automaton a b      -- ^ The automaton to convert to realtime
-              -> MSF m (a, Double) [(b, Double)]
+              -> MSF m (a, Time) [(b, Time)]
 toRealTimeMSF clockrate buffer threadHandler sf = MSF initFun
   where
     -- initFun creates some refs and threads and is never used again.
@@ -490,49 +490,59 @@ toRealTimeMSF clockrate buffer threadHandler sf = MSF initFun
         worker inp out timevar t' (count+1) sf'
     seqLastElem s = Seq.index s (Seq.length s - 1)
 
--- | The async function takes a pure (non-monadic) signal function and converts 
+
+data AsyncInput a = AINoValue | AIClearBuffer | AIValue a
+data AsyncOutput b = AONoValue | AOCalculating Int | AOValue b
+
+-- | The async function takes a pure signal function (an Automaton) and converts 
 --   it into an asynchronous signal function usable in a MonadIO signal 
 --   function context.  The output MSF takes events of type a, feeds them to 
 --   the asynchronously running input SF, and returns events with the output 
 --   b whenever they are ready.  The input SF is expected to run slowly 
 --   compared to the output MSF, but it is capable of running just as fast.
---
---   Might we practically want a way to \"clear the buffer\" if we accidentally 
---   queue up too many async inputs?
---   Perhaps the output should be something like:
---   data AsyncOutput b = None | Calculating Int | Value b
---   where the Int is the size of the buffer.  Similarly, we could have
---   data AsyncInput  a = None | ClearBuffer | Value a
+--   The input stream is a value, an option to clear any buffered values, or 
+--   nothing, and the output stream is either a result value, a AOCalculating 
+--   indicating that the asynchronous function is calculating and giving the 
+--   buffer size, or nothing.
 async :: forall m a b. (Monad m, MonadIO m, MonadFix m, NFData b) => 
                  (ThreadId -> m ()) -- ^ The thread handler
               -> Automaton a b      -- ^ The automaton to convert to asynchronize
-              -> MSF m (SEvent a) (SEvent b)
-async threadHandler sf = delay Nothing >>> MSF initFun
+              -> MSF m (AsyncInput a) (AsyncOutput b)
+async threadHandler sf = delay AINoValue >>> MSF initFun
   where
     -- initFun creates some refs and threads and is never used again.
     -- All future processing is done in sfFun and the spawned worker thread.
-    initFun :: (SEvent a) -> m ((SEvent b), MSF m (SEvent a) (SEvent b))
+    initFun :: (AsyncInput a) -> m ((AsyncOutput b), MSF m (AsyncInput a) (AsyncOutput b))
     initFun ea = do
-        inp <- newChan
+        inp <- newIORef empty
         out <- newIORef empty
-        tid <- liftIO $ forkIO $ worker inp out sf
+        proceed <- newEmptyMVar
+        tid <- liftIO $ forkIO $ worker proceed inp out sf
         threadHandler tid
-        sfFun inp out ea
+        sfFun 0 proceed inp out ea
     -- sfFun communicates with the worker thread, sending it the input values 
     -- and collecting from it the output values.
-    sfFun :: Chan a -> IORef (Seq b) 
-          -> (SEvent a) -> m ((SEvent b), MSF m (SEvent a) (SEvent b))
-    sfFun inp out ea = do
-        maybe (return ()) (writeChan inp) ea    -- send the worker the new input
+    sfFun :: Int -> MVar () -> IORef (Seq a) -> IORef (Seq b) 
+          -> (AsyncInput a) -> m ((AsyncOutput b), MSF m (AsyncInput a) (AsyncOutput b))
+    sfFun count proceed inp out ea = do
+        count' <- case ea of
+          AIValue a -> atomicModifyIORef inp (\is -> (is |> a, ())) >> tryPutMVar proceed () >> return (count+1)
+          AIClearBuffer -> atomicModifyIORef inp (\_ -> (empty, ())) >> tryTakeMVar proceed >> return 0
+          AINoValue -> return count
         b <- atomicModifyIORef out seqRestHead  -- collect any ready results
-        return (b, MSF (sfFun inp out))
+        let (b', count'') = maybe (Nothing, count') (\x -> (Just x, count'-1)) b
+            b'' = maybe (if count'' <= 0 then AONoValue else AOCalculating count'') AOValue b'
+        return (b'', MSF (sfFun count'' proceed inp out))
     -- worker processes the inner, "simulated" signal function.
-    worker :: Chan a -> IORef (Seq b) -> Automaton a b -> IO ()
-    worker inp out (Automaton sf) = do
-        a <- readChan inp       -- get the latest input (or block if unavailable)
-        let (b, sf') = sf a     -- do the calculation
-        deepseq b $ atomicModifyIORef out (\s -> (s |> b, ()))
-        worker inp out sf'
+    worker :: MVar () -> IORef (Seq a) -> IORef (Seq b) -> Automaton a b -> IO ()
+    worker proceed inp out (Automaton sf) = do
+        ea <- atomicModifyIORef inp seqRestHead
+        case ea of
+          Nothing -> takeMVar proceed >> worker proceed inp out (Automaton sf)
+          Just a -> do
+            let (b, sf') = sf a     -- do the calculation
+            deepseq b $ atomicModifyIORef out (\s -> (s |> b, ()))
+            worker proceed inp out sf'
     seqRestHead s = case viewl s of
         EmptyL  -> (s,  Nothing)
         a :< s' -> (s', Just a)

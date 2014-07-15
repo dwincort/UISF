@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 -- |
--- Module      :  FRP.UISF.AuxFunctions
+-- Module      :  FRP.UISF.Widget
 -- Copyright   :  (c) Daniel Winograd-Cort 2014
 -- License     :  see the LICENSE file in the distribution
 --
@@ -26,7 +26,7 @@ import FRP.UISF.UISF
 import FRP.UISF.AuxFunctions (SEvent, Time, timer, edge, delay, constA, concatA)
 
 import Control.Arrow
-
+import Data.Maybe (fromMaybe)
 
 ------------------------------------------------------------
 -- Shorthand and Helper Functions
@@ -438,14 +438,35 @@ histogram layout =
         process Nothing (Just a) _ _ = ((), Just a, False) --TODO check if this should be True
         process (Just a) _       _ _ = ((), Just a, True)
         draw (xy, (w, h)) _ = translateGraphic xy . mymap (polyline . mkPts)
-          where mkPts l  = zip (xs $ length l) (map adjust . normalize . reverse $ l)
-                xs n     = reverse $ map truncate [0,(fromIntegral w / fromIntegral (n-1))..(fromIntegral w)]
+          where mkPts l  = zip (reverse $ xs $ length l) (map adjust . normalize . reverse $ l)
+                xs n     = [0,(w `div` (n-1))..w]
                 adjust i = buffer + truncate (fromIntegral (h - 2*buffer) * (1 - i))
                 normalize lst = map (/m) lst where m = maximum lst
                 buffer = truncate $ fromIntegral h / 10
                 mymap :: ([a] -> Graphic) -> SEvent [a] -> Graphic
                 mymap f (Just lst@(_:_)) = f lst
                 mymap _ _ = nullGraphic
+
+-- | The histogramWithScale widget creates a histogram and an x coordinate scale.
+histogramWithScale :: RealFrac a => Layout -> UISF (SEvent [(a,String)]) ()
+histogramWithScale layout = 
+  mkWidget Nothing layout process draw
+  where process Nothing Nothing  _ _ = ((), Nothing, False)
+        process Nothing (Just a) _ _ = ((), Just a, False) --TODO check if this should be True
+        process (Just a) _       _ _ = ((), Just a, True)
+        draw (xy, (w, h)) _ = mymap (polyline . mkPts) mkScale
+          where mkPts l  = zip (reverse $ xs $ length l) (map adjust . normalize . reverse $ l)
+                xs n     = [sidebuffer,(sidebuffer+((w-sidebuffer*2) `div` (n-1)))..(w-sidebuffer)]
+                adjust i = bottombuffer + truncate (fromIntegral (h - topbuffer - bottombuffer) * (1 - i))
+                normalize lst = map (/m) lst where m = maximum lst
+                topbuffer = truncate $ fromIntegral h / 10
+                bottombuffer = max 20 topbuffer
+                sidebuffer = 20
+                mkScale l = foldl (\pg (x,s) -> translateGraphic xy (withColor Black (text (x-((8*length s) `div` 2), h-12) s)) // pg) 
+                                  nullGraphic $ zip (xs $ length l) l
+                mymap :: ([a] -> Graphic) -> ([String] -> Graphic) -> SEvent [(a,String)] -> Graphic
+                mymap f g (Just lst@(_:_)) = let (fl,gl) = unzip lst in g gl // translateGraphic xy (f fl)
+                mymap _ _ _ = nullGraphic
 
 
 ------------------------------------------------------------
@@ -616,7 +637,7 @@ canvas' layout draw = mkWidget Nothing layout process drawit
 -- Cycle Box --
 ---------------
 -- | cyclebox is a clickable widget that cycles through a predefined set 
---   set of appearances/output values
+--   set of appearances/output values.
 cyclebox :: Layout -> [(Rect -> Bool -> Graphic, b)] -> Int -> UISF () b
 cyclebox d lst start = focusable $ 
   mkWidget start d process draw
@@ -631,6 +652,24 @@ cyclebox d lst start = focusable $
           SKey ENTER _ True -> incr i
           Key ' ' _ True -> incr i
           _ -> i
+
+-- | cyclebox' is a cyclebox that additionally accepts input events that 
+--   can set it to a particular appearance/output.
+cyclebox' :: Layout -> [(Rect -> Bool -> Graphic, b)] -> Int -> UISF (SEvent Int) b
+cyclebox' d lst start = focusable $ 
+  mkWidget start d process draw
+  where
+    len = length lst
+    incr i = (i+1) `mod` len
+    draw b inFocus i = (fst (lst!!i)) b inFocus
+    process ei i b evt = (snd (lst!!i'), i', i /= i')
+      where 
+        j = fromMaybe i ei
+        i' = case evt of
+          Button _ True True -> incr j
+          SKey ENTER _ True -> incr j
+          Key ' ' _ True -> incr j
+          _ -> j
 
 
 ------------------------------------------------------------
