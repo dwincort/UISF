@@ -58,6 +58,7 @@ module FRP.UISF.SOE (
   Key(..),
   SpecialKey (..),
   UIEvent (..),
+  hasShiftModifier, hasCtrlModifier, hasAltModifier, 
   maybeGetWindowEvent,
   getWindowEvent,
   Word32,
@@ -554,6 +555,14 @@ data UIEvent =
   | NoUIEvent
  deriving Show
 
+hasShiftModifier :: ([Char],[SpecialKey]) -> Bool
+hasShiftModifier (_, sks) = elem LSHIFT sks || elem RSHIFT sks
+
+hasCtrlModifier :: ([Char],[SpecialKey]) -> Bool
+hasCtrlModifier (_, sks) = elem LCTRL sks || elem RCTRL sks
+
+hasAltModifier :: ([Char],[SpecialKey]) -> Bool
+hasAltModifier (_, sks) = elem LALT sks || elem RALT sks
 
 -- | getWindowEvent and maybeGetWindowEvent both take an additional argument 
 --  sleepTime that tells how long to sleep in the case where there are no
