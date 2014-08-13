@@ -10,7 +10,7 @@
 -- A simple Graphical User Interface with concepts borrowed from Phooey
 -- by Conal Elliot.
 
-{-# LANGUAGE DoRec #-}
+{-# LANGUAGE RecursiveDo #-}
 
 module FRP.UISF.UIMonad where
 
@@ -105,17 +105,49 @@ type Rect = (Point, Dimension)
 -- * UI Layout
 ------------------------------------------------------------
 
--- | The layout of a widget provides data to calculate its actual size
--- in a given context.
+-- $ctc The layout of a widget provides data to calculate its actual size
+-- in a given context.  
+-- Layout calculation makes use of lazy evaluation to do everything in one pass.  
+-- Although the UI function maps from Context to Layout, all of the fields of 
+-- Layout must be independent of the Context so that they are avaiable before 
+-- the UI function is even evaluated.
+
+-- | Layouts for individual widgets typically come in a few standard flavors, 
+--   so we have this convenience function for their creation.
+--   This function takes layout information for first the horizontal 
+--   dimension and then the vertical.
+makeLayout :: LayoutType ->     -- ^ Horizontal Layout information
+              LayoutType ->     -- ^ Vertical Layout information
+              Layout
+makeLayout (Fixed h) (Fixed v) = Layout 0 0 h v h v
+makeLayout (Stretchy minW) (Fixed v) = Layout 1 0 0 v minW v
+makeLayout (Fixed h) (Stretchy minH) = Layout 0 1 h 0 h minH
+makeLayout (Stretchy minW) (Stretchy minH) = Layout 1 1 0 0 minW minH
+
+-- | A dimension can either be:
+data LayoutType = 
+        Stretchy { minSize :: Int }
+        -- ^ Stretchy with a minimum size in pixels
+      | Fixed { fixedSize :: Int }
+        -- ^ Fixed with a size measured in pixels
+
+-- | The null layout is useful for \"widgets\" that do not appear or 
+--   take up space on the screen.
+nullLayout = Layout 0 0 0 0 0 0
+
+
+-- | More complicated layouts can be manually constructed with direct 
+-- access to the Layout data type.
 --
--- 1. hFill/vFill specify how much stretching space (in units) in
---    horizontal/vertical direction should be allocated for this widget.
+-- 1. hFill and vFill specify how much stretching space (in comparative 
+--    units) in the horizontal and vertical directions should be 
+--    allocated for this widget.
 -- 
--- 2. hFixed/vFixed specify how much non-stretching space (width/height in
---    pixels) should be allocated for this widget.
+-- 2. hFixed and vFixed specify how much non-stretching space (in pixels) 
+--    of width and height should be allocated for this widget.
 -- 
--- 3. minW/minH specify minimum values (width/height in pixels) for the widget's 
---    dimensions.
+-- 3. minW and minH specify minimum values (in pixels) of width and height 
+--    for the widget's dimensions.
 
 data Layout = Layout
   { hFill  :: Int
@@ -126,39 +158,6 @@ data Layout = Layout
   , minH   :: Int
   } deriving (Eq, Show)
 
-
--- Layout calculation makes use of lazy evaluation to do it in one pass.  
--- Although the UI function maps from Context to Layout, all of the fields of 
--- Layout must be independent of the Context so that they are avaiable before 
--- the UI function is even evaluated.
--- 
--- Layouts can end up being quite complicated, but that is usually due to 
--- layouts being merged (i.e. for multiple widgets used together).  Layouts 
--- for individual widgets typically come in a few standard flavors, so we 
--- have the following convenience function for their creation:
-
-----------------
--- makeLayout --
-----------------
-
--- | A dimension can either be:
-data LayoutType = 
-        Stretchy { minSize :: Int }
-        -- ^ Stretchy with a minimum size in pixels
-      | Fixed { fixedSize :: Int }
-        -- ^ Fixed with a size measured in pixels
-
--- | This function takes layout information for first the horizontal 
---   dimension and then the vertical.
-makeLayout :: LayoutType -> LayoutType -> Layout
-makeLayout (Fixed h) (Fixed v) = Layout 0 0 h v h v
-makeLayout (Stretchy minW) (Fixed v) = Layout 1 0 0 v minW v
-makeLayout (Fixed h) (Stretchy minH) = Layout 0 1 h 0 h minH
-makeLayout (Stretchy minW) (Stretchy minH) = Layout 1 1 0 0 minW minH
-
--- | The null layout is useful for \"widgets\" that do not appear or 
---   take up space on the screen.
-nullLayout = Layout 0 0 0 0 0 0
 
 
 ------------------------------------------------------------

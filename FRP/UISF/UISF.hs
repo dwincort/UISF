@@ -10,7 +10,7 @@
 -- A simple Graphical User Interface with concepts borrowed from Phooey
 -- by Conal Elliot.
 
-{-# LANGUAGE ScopedTypeVariables, Arrows, DoRec, CPP, OverlappingInstances, FlexibleInstances, TypeSynonymInstances #-}
+{-# LANGUAGE ScopedTypeVariables, Arrows, RecursiveDo, CPP, OverlappingInstances, FlexibleInstances, TypeSynonymInstances #-}
 
 module FRP.UISF.UISF (
     UISF,
@@ -307,9 +307,8 @@ windowUser w addEv = do
       Nothing -> return False
       Just e  -> case e of
 -- There's a bug somewhere with GLFW that makes pressing ESC freeze up 
--- GHCi, so I've removed this.
+-- GHCi (specifically when calling GLFW.closeWindow), so I've removed this.
 --        SKey GLFW.ESC True -> closeWindow w >> return True
---        Key '\00'  True -> return True
         Closed          -> return True
         _               -> addEv e >> getEvents
 

@@ -12,7 +12,7 @@
 -- Here we use UISF to create a similar example using arrowized FRP.
 
 
-{-# LANGUAGE Arrows, DoRec #-}
+{-# LANGUAGE Arrows, RecursiveDo #-}
 module FRP.UISF.Examples.Crud where
 import FRP.UISF
 

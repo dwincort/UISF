@@ -98,7 +98,7 @@ instance ShortShow a => ShortShow [a] where
 -------------------------------------------------------------
 
 -- The main running function
-main = runUI (800,600) "Pinochole Assistant" pinochleSF
+main = runUI (800,700) "Pinochole Assistant" pinochleSF
 
 pinochleSF :: UISF () ()
 pinochleSF = proc _ -> do

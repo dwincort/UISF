@@ -15,7 +15,7 @@
 -- 
 -- The monadic UI concept is borrowed from Phooey by Conal Elliott.
 
-{-# LANGUAGE DoRec, Arrows, TupleSections #-}
+{-# LANGUAGE RecursiveDo, Arrows, TupleSections #-}
 {-# OPTIONS_HADDOCK prune #-}
 
 module FRP.UISF.Widget where

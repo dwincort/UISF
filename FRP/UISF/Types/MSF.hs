@@ -9,7 +9,7 @@
 --
 -- MSF is a monadic signal function.
 
-{-# LANGUAGE CPP, DoRec, FlexibleInstances, MultiParamTypeClasses, OverlappingInstances #-}
+{-# LANGUAGE CPP, RecursiveDo, FlexibleInstances, MultiParamTypeClasses, OverlappingInstances #-}
 
 module FRP.UISF.Types.MSF where
 
