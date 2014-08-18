@@ -17,16 +17,20 @@ We declare the module name and import UISF
 > import Text.Read (readMaybe)  -- For Temperature Converter
 > import Control.Monad (join)   -- For Temperature Converter
 > 
-> import System.Locale      -- For Flight Booker
-> import Data.Time          -- For Flight Booker
+> import System.Locale          -- For Flight Booker
+> import Data.Time              -- For Flight Booker
 > import Data.Time.Clock (getCurrentTime)   -- For Flight Booker
-> import Data.Time.Format   -- For Flight Booker
-> import Data.Maybe (isJust)
+> import Data.Time.Format       -- For Flight Booker
+> import Data.Maybe             -- For Flight Booker, Circle Draw
 > 
-> import FRP.UISF.Widget (block, padding) -- For Timer
+> import FRP.UISF.Widget        -- For Timer, Circle Draw
 > 
 > import Data.List (isInfixOf)  -- For CRUD
 > import Data.Char (toLower)    -- For CRUD
+> 
+> import FRP.UISF.SOE           -- For Circle Draw
+> import Data.List (delete)     -- For Circle Draw
+> import Control.Monad (mplus)  -- For Circle Draw
 
 
 ---------------------------------------
@@ -334,6 +338,174 @@ arrow combinators.  Based on button presses, we update the database.
 
 
 ---------------------------------------
------------- Circle Drawer ------------
+------------ Circle Draw ------------
 ---------------------------------------
+
+The drawing canvas for the circle draw example is a bit more involved than 
+the custom guage widget we used for the timer, and so instead of using the 
+canvas widget builder, we will use the more powerful mkWidget.
+
+To start, let's write some code for circles.  We'll begin with a very 
+simple circle type, accessors for it, and a distance function for points.
+
+> -- type Point = (Int, Int) -- The Point class is imported from FRP.UISF.SOE
+> type Radius = Double
+> type Circle = (Point, Radius)
+> 
+> getCenter :: Circle -> Point
+> getCenter = fst
+> 
+> getRadius :: Circle -> Radius
+> getRadius = snd
+> 
+> distance :: Point -> Point -> Double
+> distance (x1,y1) (x2,y2) = sqrt $ fromIntegral $
+>   (x1 - x2)^2 + (y1 - y2)^2
+
+We'll make one more helper function to figure out which circle should 
+be ``selected'', and colored gray.  The arguments are the mouse position 
+and the list of Circles that exist, and the output is the circle to color 
+gray (if it exists)
+
+> getSelectedCircle :: Point -> [Circle] -> Maybe Circle
+> getSelectedCircle p = getCircle' Nothing where
+>   getCircle' res [] = fmap snd res
+>   getCircle' res (c@(cp,cr):cs) = let d = distance p cp in
+>     case (d<cr, isJust res) of
+>       (True, True) -> getCircle' (if d < fst (fromJust res) then Just (d,c) else res) cs
+>       (True, False) -> getCircle' (Just (d,c)) cs
+>       _ -> getCircle' res cs
+
+Next, we'll make the widget for drawing the circles.  
+We will keep the undo/redo functionality separate from the circle canvas.  
+Thus, the canvas will have three properties:
+  - It will keep track of a list of circles to draw, updating them based 
+    on its input stream.
+  - It will send output events corresponding to mouse clicks.
+  - It will display the circles with any that the cursor is in highlighted.
+
+First, we'll make two little drawing functions for making filled and open 
+circles.  UISF provides the more generic 'ellipse' and 'arc' functions, but 
+they can be easily adjusted for our purposes:
+
+> filledCircle (x,y) r' = let r = round r' in ellipse (x-r,y-r) (x+r,y+r)
+> openCircle   (x,y) r' = let r = round r' in arc     (x-r,y-r) (x+r,y+r) 0 360
+
+Now, we have the tools to make the circle canvas
+
+> type LeftClicks = SEvent Point
+> type RightClicks = SEvent Circle
+> 
+> circleCanvas :: UISF (SEvent [Circle]) (LeftClicks, RightClicks)
+> circleCanvas = focusable $ mkWidget ([], Nothing, (0,0)) layout process draw
+>   where
+>     layout = makeLayout (Stretchy 100) (Stretchy 100)
+>     process inpLst (prevLst, prevFC, prevPt) _bbx evt = (clickEvts, (newLst, focusCircle, mousePt), redraw)
+>       where 
+>         newLst = fromMaybe prevLst inpLst
+>         (clickEvts, focusCircle, mousePt, redraw) = case (evt, isJust inpLst) of
+>           (Button pt True  True, d) -> ((Just pt, Nothing),  prevFC, prevPt, d)
+>           (Button pt False True, d) -> ((Nothing, getSelectedCircle pt newLst), prevFC, prevPt, d)
+>           (MouseMove pt, d) -> let fc = getSelectedCircle pt newLst in ((Nothing, Nothing), fc, pt, prevFC /= fc || d)
+>           (_, d) -> ((Nothing, Nothing), getSelectedCircle prevPt newLst, prevPt, d)
+>     draw _ _ (cs,fc,_) = draw' cs fc
+>     draw' [] Nothing = nullGraphic
+>     draw' [] (Just (p,r)) = withColor' gray2 $ filledCircle p r
+>     draw' ((p,r):cs) fc = withColor Black (openCircle p r) // draw' cs fc
+
+Lastly, we'll create the undo/redo functionality.  This is all pure 
+Haskell code and has no UISF components.
+
+> data Update = C Circle | Minor Circle Radius | Major Circle Radius
+> type UndoList = [Update]
+> type RedoList = [Update]
+
+We assert that an UndoList and a RedoList are [Update] with the condition 
+that no element except the first element in the list can be a Minor Update.
+
+> addMinor :: Circle -> Radius -> UndoList -> UndoList
+> addMinor c r ((Minor _ _):lst) = Minor c r : lst
+> addMinor c r lst = Minor c r : lst
+> 
+> removeMinor :: UndoList -> UndoList
+> removeMinor ((Minor _ _):lst) = lst
+> removeMinor lst = lst
+> 
+> addMajor :: Circle -> Radius -> UndoList -> UndoList
+> addMajor c r ((Minor _ _):lst) = Major c r : lst
+> addMajor c r lst = Major c r : lst
+> 
+> addCircle :: Circle -> UndoList -> UndoList
+> addCircle c (m@(Minor _ _):lst) = m : C c : lst
+> addCircle c lst = C c : lst
+> 
+> undoListToCircles :: UndoList -> [Circle]
+> undoListToCircles [] = []
+> undoListToCircles ((Minor c@(pt,_) r):lst) = (pt,r) : delete c (undoListToCircles lst)
+> undoListToCircles ((Major c@(pt,_) r):lst) = (pt,r) : delete c (undoListToCircles lst)
+> undoListToCircles ((C c):lst) = c : undoListToCircles lst
+> 
+> performUndo :: UndoList -> RedoList -> (UndoList, RedoList)
+> performUndo ((Minor _ _):undos) redos = (undos, redos)
+> performUndo (u:undos) redos = (undos, u:redos)
+> performUndo [] redos = ([], redos)
+> 
+> performRedo :: UndoList -> RedoList -> (UndoList, RedoList)
+> performRedo undos [] = (undos, [])
+> performRedo undos (u:redos) = (u:undos, redos)
+
+With both the undo/redo logic and the circle drawing canvas complete, we can 
+create the UISF.
+
+> circleDrawSF :: UISF () ()
+> circleDrawSF = proc _ -> do
+>   rec
+>     (undo, redo) <- leftRight $ (edge <<< button "Undo") &&& 
+>                                 (edge <<< button "Redo") -< () 
+>     updatesOld  <- delay [] -< updates
+>     redoListOld <- delay [] -< redoList
+>     (leftClicks, rightClicks) <- delay (Nothing, Nothing) <<< circleCanvas -< 
+>           if doUpdate then Just (undoListToCircles updates) else Nothing
+>     let (updates', redoList) = case (undo, redo, leftClicks) of
+>             (Just _, _, _) -> performUndo updatesOld redoListOld
+>             (_, Just _, _) -> performRedo updatesOld redoListOld
+>             (_,_,Just pt)  -> (addCircle (pt, defaultRadius) updatesOld, [])
+>             _              -> (updatesOld, redoListOld)
+
+In the above first half of the UISF, we create the undo and redo buttons, we 
+intitialize the state of the update list and the redo list, we declare the 
+circle canvas, and we process the undo and redo buttons.
+
+The next portion of the UISF deals with making diameter adjustments.  
+GLFW does not support popup context menus, and thus UISF does not support 
+them either.  Therefore, when a right click is detected, we will instead add 
+the adjustment slider as a widget to the bottom of the current frame.  
+The adjustment slider should only appear after a right click and before 
+the cancel or set buttons are pressed -- we use an 'accum' to achieve this.
+
+>     isAdjustActive <- accum False -< fmap (const . const False) majorU 
+>                              `mplus` fmap (const . const False) cancel
+>                              `mplus` fmap (const . const True) rightClicks
+>     adjustC <- accum ((0,0),0) -< fmap const rightClicks
+>     (minorU, majorU, cancel) <- if isAdjustActive
+>                                 then do
+>                                 leftRight (label "Adjust Diameter of circle at" >>> display) -< getCenter adjustC
+>                                 newR <- hSlider (2,200) defaultRadius -< ()
+>                                 newRU <- unique -< newR
+>                                 (setButton, cancelButton) <- leftRight $ (edge <<< button "Set") &&& 
+>                                                                          (edge <<< button "Cancel") -< ()
+>                                 returnA -< (newRU, fmap (const newR) setButton, cancelButton)
+>                                 else returnA -< (Nothing, Nothing, Nothing)
+>     let updates = case (majorU, cancel, minorU) of
+>                     (Just r, _, _)             -> addMajor adjustC r updates'
+>                     (Nothing, Just _, _)       -> removeMinor updates'
+>                     (Nothing, Nothing, Just r) -> addMinor adjustC r updates'
+>                     _ -> updates'
+>     let doUpdate = isJust undo || isJust redo || isJust leftClicks || isJust rightClicks 
+>                 || isJust minorU || isJust majorU || isJust cancel
+>   returnA -< ()
+>  where defaultRadius = 30
+> 
+> circleDraw = runUI (450, 400) "Circle Draw" circleDrawSF
+
 
