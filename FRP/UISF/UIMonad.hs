@@ -17,6 +17,8 @@ module FRP.UISF.UIMonad where
 import FRP.UISF.SOE
 import FRP.UISF.AuxFunctions (Time)
 
+import Control.Applicative
+import Control.Monad (ap)
 import Control.Monad.Fix
 import Control.Concurrent.MonadIO
 
@@ -273,6 +275,13 @@ type DirtyBit = Bool
 ------------------------------------------------------------
 -- Monadic Instances
 ------------------------------------------------------------
+
+instance Functor UI where
+  fmap f ui = ui >>= return . f
+
+instance Applicative UI where
+  pure = return
+  (<*>) = ap
 
 instance Monad UI where
   return i = UI (\(_,foc,_,_) -> return (nullLayout, False, foc, nullAction, nullCD, i))

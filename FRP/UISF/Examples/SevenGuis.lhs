@@ -1,9 +1,12 @@
 
 Last modified by: Daniel Winograd-Cort
-Last modified on: 8/13/2014
+Last modified on: 9/10/2014
 
 This module is intended to show UISF's ability to implement the 
 seven GUIs listed on https://github.com/eugenkiss/7guis/wiki.
+
+Note that this module is not exposed in UISF because it requires the 
+additional time and old-locale packages.
 
 We begin my including the language pragma for arrows, as they are 
 integral for easily writing arrowized FRP.
@@ -18,6 +21,7 @@ We declare the module name and import UISF
 > import Control.Monad (join)   -- For Temperature Converter
 > 
 > import System.Locale          -- For Flight Booker
+> --import Data.Time.Format.Locale    -- FIXME To be used with time >= 1.5
 > import Data.Time              -- For Flight Booker
 > import Data.Time.Clock (getCurrentTime)   -- For Flight Booker
 > import Data.Time.Format       -- For Flight Booker
@@ -64,6 +68,7 @@ to pass it to runUI.
 
 > counter :: IO ()
 > counter = runUI (250,24) "Counter" counterSF
+> gui1 = counter
 
 
 ---------------------------------------
@@ -103,6 +108,7 @@ so we do this twice, once for each textbox.
 >   returnA -< ()
 >
 > tempConvert = runUI (400,24) "Temp Converter" tempCovertSF
+> gui2 = tempConvert
 
 
 ---------------------------------------
@@ -137,6 +143,7 @@ indicating that the entry is invalid.
 >       Nothing -> label "invalid!" -< Nothing
 >   where readTimeMaybe :: TimeLocale -> String -> String -> Maybe UTCTime
 >         readTimeMaybe tl format s = case readsTime tl format s of
+> --        readTimeMaybe tl format s = case readSTime True tl format s of -- FIXME To be used with time >= 1.5
 >                                       [(x, "")] -> Just x
 >                                       _ -> Nothing
 
@@ -176,6 +183,7 @@ string.
 >         verifyGreater _ _ = False
 > 
 > flightBooker = getCurrentTime >>= \time -> runUI (800,200) "Flight Booker" (flightBookerSF defaultTimeLocale time)
+> gui3 = flightBooker
 
 
 ---------------------------------------
@@ -223,6 +231,7 @@ we must apply a delay to it to prevent an infinite recursion.
 >     returnA -< ()
 > 
 > timerGUI = runUI (800,200) "Timer" timerGUISF
+> gui4 = timerGUI
 
 
 ---------------------------------------
@@ -335,6 +344,7 @@ arrow combinators.  Based on button presses, we update the database.
 >     lst `at` index = if index >= length lst || index < 0 then NameEntry "" "" else lst!!index
 > 
 > crud = runUI (450, 400) "CRUD" (crudSF defaultnames)
+> gui5 = crud
 
 
 ---------------------------------------
@@ -507,5 +517,5 @@ the cancel or set buttons are pressed -- we use an 'accum' to achieve this.
 >  where defaultRadius = 30
 > 
 > circleDraw = runUI (450, 400) "Circle Draw" circleDrawSF
-
+> gui6 = circleDraw
 
