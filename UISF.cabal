@@ -1,5 +1,5 @@
 name:           UISF
-version:        0.2.0.0
+version:        0.3.0.0
 Cabal-Version:  >= 1.8
 license:        BSD3
 license-file:   License
@@ -17,7 +17,7 @@ description:
 extra-source-files:
         ReadMe.txt,
         FRP/UISF/Examples/EnableGUI.hs
-        FRP/UISF/Examples/SevenGuis.hs
+        FRP/UISF/Examples/SevenGuis.lhs
         FRP/UISF/Examples/Pinochle.hs
         FRP/UISF/Examples/fft.hs
 

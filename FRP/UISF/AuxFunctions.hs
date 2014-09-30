@@ -29,14 +29,14 @@ module FRP.UISF.AuxFunctions (
     vdelayC, fdelayC, 
     timer, genEvents, 
     -- * Event buffer
-    BufferEvent (..), Tempo, BufferControl, eventBuffer, 
+    Tempo, BufferOperation(..), eventBuffer, 
     
 --    (=>>), (->>), (.|.),
 --    snapshot, snapshot_,
 
     -- * Signal Function Conversions
     -- $conversions
-    -- ** Types
+    -- *** Types
     Automaton(..), toAutomaton, msfiToAutomaton, 
     -- *** Conversions
     -- $conversions2
@@ -108,6 +108,8 @@ accum x = proc f -> do
     rec b <- delay x -< maybe b ($b) f
     returnA -< b
 
+-- | The signal function unique will produce an event each time its input 
+--   signal changes.
 unique :: Eq e => ArrowCircuit a => a e (SEvent e)
 unique = proc e -> do
     prev <- delay Nothing -< Just e
@@ -310,24 +312,24 @@ genEvents lst = proc dt -> do
 -- Event buffer
 --------------------------------------
 
--- | The BufferEvent data type is used in tandem with 'BufferControl' 
---   to provide the right control information to 'eventBuffer'.
-data BufferEvent b = 
-      Clear -- ^ Erase the buffer
-    | SkipAhead DeltaT  -- ^ Skip ahead a certain amount of time in the buffer
-    | AddData      [(DeltaT, b)]    -- ^ Merge data into the buffer
-    | AddDataToEnd [(DeltaT, b)]    -- ^ Add data to the end of the buffer
-
 -- | Tempo is just a Double.
 type Tempo = Double
 
--- | BufferControl has a Buffer event, a bool saying whether to Play (true) or 
---   Pause (false), and a tempo multiplier.
-type BufferControl b = (SEvent (BufferEvent b), Bool, Tempo)
+-- | The BufferOperation data type wraps up the data and operational commands 
+--   to control an 'eventbuffer'.
+data BufferOperation b = 
+      NoBOp -- ^ No Buffer Operation
+    | ClearBuffer -- ^ Erase the buffer
+    | SkipAheadInBuffer DeltaT  -- ^ Skip ahead a certain amount of time in the buffer
+    | MergeInBuffer  [(DeltaT, b)]    -- ^ Merge data into the buffer
+    | AppendToBuffer [(DeltaT, b)]    -- ^ Append data to the end of the buffer
+    | SetBufferPlayStatus Bool (BufferOperation b) -- ^ Set a new play status (True = Playing, False = Paused)
+    | SetBufferTempo Tempo (BufferOperation b) -- ^ Set the buffer's tempo
 
 -- | eventBuffer allows for a timed series of events to be prepared and 
---   emitted.  The streaming input is a BufferControl, described above.  
---   Just as MIDI files have events timed based 
+--   emitted.  The streaming input is a BufferOperation, described above.  
+--   Note that the default play status is playing and the default tempo 
+--   is 1.  Just as MIDI files have events timed based 
 --   on ticks since the last event, the events here are timed based on 
 --   seconds since the last event.  If an event is to occur 0.0 seconds 
 --   after the last event, then it is assumed to be played at the same 
@@ -335,14 +337,17 @@ type BufferControl b = (SEvent (BufferEvent b), Bool, Tempo)
 --   at the same timestep. In addition to any events emitted, a 
 --   streaming Bool is emitted that is True if the buffer is empty and 
 --   False if the buffer is full (meaning that events will still come).
-eventBuffer :: (ArrowTime a, ArrowCircuit a) => a (BufferControl b) (SEvent [b], Bool)
-eventBuffer = proc (bc, doPlay, tempo) -> do
+eventBuffer :: (ArrowTime a, ArrowCircuit a) => a (BufferOperation b) (SEvent [b], Bool)
+eventBuffer = proc bo' -> do
+    let (bo, doPlay', tempo') = collapseBO bo'
+    doPlay <- hold True -< doPlay'
+    tempo <- hold 1 -< tempo'
     t <- time -< ()
     rec tprev  <- delay 0    -< t   --used to calculate dt, the change in time
         buffer <- delay []   -< buffer''' --the buffer
         let dt = tempo * (t-tprev) --dt will never be negative
             buffer' = if doPlay then subTime buffer dt else buffer
-            buffer'' = maybe buffer' (update buffer') bc  --update the buffer based on the control
+            buffer'' = update buffer' bo  --update the buffer based on the operation
             (nextMsgs, buffer''') = if doPlay then getNextEvent buffer'' --get any events that are ready
                                     else (Nothing, buffer'')
     returnA -< (nextMsgs, null buffer''')
@@ -356,11 +361,13 @@ eventBuffer = proc (bc, doPlay, tempo) -> do
             nextEs = map snd es
         in  if null buffer then (Nothing, [])
             else (Just nextEs, rest)
-    update :: [(DeltaT, b)] -> BufferEvent b -> [(DeltaT, b)]
-    update _ Clear = []
-    update b (SkipAhead dt) = skipAhead b dt
-    update b (AddData b') = merge b b'
-    update b (AddDataToEnd b') = b ++ b'
+    update :: [(DeltaT, b)] -> BufferOperation b -> [(DeltaT, b)]
+    update b NoBOp = b
+    update _ ClearBuffer = []
+    update b (SkipAheadInBuffer dt) = skipAhead b dt
+    update b (MergeInBuffer b') = merge b b'
+    update b (AppendToBuffer b') = b ++ b'
+    update _ _ = error "The impossible happened in eventBuffer"
     merge :: [(DeltaT, b)] -> [(DeltaT, b)] -> [(DeltaT, b)]
     merge b [] = b
     merge [] b = b
@@ -373,6 +380,11 @@ eventBuffer = proc (bc, doPlay, tempo) -> do
     skipAhead ((bt,b):bs) dt = if bt < dt 
         then skipAhead bs (dt-bt)
         else (bt-dt,b):bs
+    collapseBO :: BufferOperation b -> (BufferOperation b, Maybe Bool, Maybe Tempo)
+    collapseBO (SetBufferPlayStatus b bo) = let (o, _, t) = collapseBO bo in (o, Just b, t)
+    collapseBO (SetBufferTempo t bo) = let (o, b, _) = collapseBO bo in (o, b, Just t)
+    collapseBO bo = (bo, Nothing, Nothing)
+
 
 
 --------------------------------------
