@@ -21,9 +21,7 @@ import Data.Map (Map)
 import Data.Maybe (listToMaybe, catMaybes)
 import qualified Data.Map as Map
 
-import FRP.UISF.Types.MSF
 import Data.Array.Unboxed
-import Data.Functor.Identity
 
 
 
@@ -60,7 +58,7 @@ tab2 = tableSinesN 4096 [1.0,0.5,0.33]
 
 -- Table-driven oscillator
 
-osc :: Table -> Double -> MSF Identity Double Double
+osc :: ArrowCircuit a => Table -> Double -> a Double Double
 osc table sr = proc freq -> do
     rec 
       let delta = 1 / sr * freq
@@ -126,7 +124,7 @@ fftEx = proc _ -> do
     returnA -< ()
   where
     sr = 1000 -- signal rate
-    myAutomaton = msfiToAutomaton $ proc (f1, f2) -> do
+    myAutomaton = proc (f1, f2) -> do
         s1 <- osc tab1 sr -< f1
         s2 <- osc tab2 sr -< f2
         let s = (s1 + s2)/2

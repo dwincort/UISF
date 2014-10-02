@@ -21,7 +21,7 @@
 module FRP.UISF.Widget where
 
 import FRP.UISF.SOE
-import FRP.UISF.UIMonad
+import FRP.UISF.UITypes
 import FRP.UISF.UISF
 import FRP.UISF.AuxFunctions (SEvent, Time, timer, edge, delay, constA, concatA)
 
@@ -154,20 +154,18 @@ textboxE startingVal = proc ms -> do
 -----------
 -- | Title frames a UI by borders, and displays a static title text.
 title :: String -> UISF a b -> UISF a b
-title l uisf = compressUISF (modsf uisf)
-  where
-    (tw, th) = (length l * 8, 16)
-    drawit ((x, y), (w, h)) g = 
-      withColor Black (text (x + 10, y) l) 
-      // withColor' bg (block ((x + 8, y), (tw + 4, th))) 
-      // box marked ((x, y + 8), (w, h - 16))
-      // g
-    modsf sf a (CTX _ bbx@((x,y), (w,h)) _,f,t,inp) = do
-      (l,db,f',action,ts,(v,nextSF)) <- expandUISF sf a (CTX TopDown ((x + 4, y + 20), (w - 8, h - 32))
-                                                        False, f, t, inp)
-      let d = l { hFixed = hFixed l + 8, vFixed = vFixed l + 36, 
-                  minW = max (tw + 20) (minW l), minH = max 36 (minH l) }
-      return (d, db, f', first (drawit bbx) action, ts, (v,compressUISF (modsf nextSF)))
+title str (UISF fl f) = UISF layout h where
+  (tw, th) = (length str * 8, 16)
+  drawit ((x, y), (w, h)) = 
+    withColor Black (text (x + 10, y) str) 
+    // withColor' bg (block ((x + 8, y), (tw + 4, th))) 
+    // box marked ((x, y + 8), (w, h - 16))
+  layout ctx = let l = fl ctx in l { hFixed = hFixed l + 8, vFixed = vFixed l + 36, 
+                                     minW = max (tw + 20) (minW l), minH = max 36 (minH l) }
+  h (CTX _ bbx@((x,y), (w,h)) _,foc,t,inp, a) = 
+    let ctx' = CTX TopDown ((x + 4, y + 20), (w - 8, h - 32)) False
+    in do (db, foc', g, cd, b, uisf) <- f (ctx', foc, t, inp, a)
+          return (db, foc', drawit bbx // g, cd, b, title str uisf)
 
 
 ------------
@@ -508,15 +506,14 @@ mkWidget :: s                                 -- ^ initial state
          -> UISF a b
 mkWidget i layout comp draw = proc a -> do
   rec s  <- delay i -< s'
-      (b, s') <- mkUISF aux -< (a, s)
+      (b, s') <- mkUISF layout aux -< (a, s)
   returnA -< b
-  --loop $ second (delay i) >>> arr (uncurry inj) >>> mkUISF aux
     where
-      aux (a,s) (ctx,f,t,e) = (layout, db, f, justGraphicAction g, nullCD, (b, s'))
+      aux (ctx,f,t,e,(a,s)) = (db, f, g, nullCD, (b, s'))
         where
           rect = bounds ctx
           (b, s', db) = comp a s rect e
-          g = draw rect (snd f == HasFocus) s'
+          g = scissorGraphic rect $ draw rect (snd f == HasFocus) s'
 
 -- | Occasionally, one may want to display a non-interactive graphic in 
 -- the UI.  'mkBasicWidget' facilitates this.  It takes a layout and a 
@@ -524,8 +521,8 @@ mkWidget i layout comp draw = proc a -> do
 mkBasicWidget :: Layout               -- ^ layout
               -> (Rect -> Graphic)    -- ^ drawing routine
               -> UISF a a
-mkBasicWidget layout draw = mkUISF $ \a (ctx, f, _, _) ->
-  (layout, False, f, justGraphicAction (draw $ bounds ctx), nullCD, a)
+mkBasicWidget layout draw = mkUISF layout $ \(ctx, f, _, _, a) ->
+  (False, f, draw $ bounds ctx, nullCD, a)
 
 
 -- | The toggle is useful in the creation of both 'checkbox'es and 'radio' 
@@ -683,12 +680,12 @@ cyclebox' d lst start = focusable $
 -- it to see any mouse button clicks and keystrokes when it is actually 
 -- in focus.
 focusable :: UISF a b -> UISF a b
-focusable widget = proc x -> do
+focusable (UISF layout f) = proc x -> do
   rec hasFocus <- delay False -< hasFocus'
-      (y, hasFocus') <- compressUISF (h widget) -< (x, hasFocus)
+      (y, hasFocus') <- UISF layout (h f) -< (x, hasFocus)
   returnA -< y
  where
-  h w (a, hasFocus) (ctx, (myid,focus),t, inp) = do
+  h fun (ctx, (myid,focus),t, inp, (a, hasFocus)) = do
     lshift <- isKeyPressed LSHIFT
     rshift <- isKeyPressed RSHIFT
     let isShift = lshift || rshift
@@ -709,8 +706,8 @@ focusable widget = proc x -> do
               SKey _ _ _      -> NoUIEvent
               _ -> inp)
         redraw = hasFocus /= hasFocus'
-    (l, db, _, act, tids, (b, w')) <- expandUISF w a (ctx, (myid,focus'), t, inp')
-    return (l, db || redraw, (myid+1,f), act, tids, ((b, hasFocus'), compressUISF (h w')))
+    (db, _, g, cd, b, UISF newLayout fun') <- fun (ctx, (myid,focus'), t, inp', a)
+    return (db || redraw, (myid+1,f), g, cd, (b, hasFocus'), UISF newLayout (h fun'))
 
 -- | Although mouse button clicks and keystrokes will be available once a 
 -- widget marks itself as focusable, the widget may also simply want to 

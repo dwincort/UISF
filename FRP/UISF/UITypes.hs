@@ -6,50 +6,52 @@
 --
 -- Maintainer  :  dwc@cs.yale.edu
 -- Stability   :  experimental
---
--- A simple Graphical User Interface with concepts borrowed from Phooey
--- by Conal Elliot.
 
 {-# LANGUAGE RecursiveDo #-}
 
-module FRP.UISF.UIMonad where
+module FRP.UISF.UITypes where
 
 import FRP.UISF.SOE
-import FRP.UISF.AuxFunctions (Time)
 
-import Control.Applicative
-import Control.Monad (ap)
-import Control.Monad.Fix
-import Control.Concurrent.MonadIO
+import Control.Concurrent (ThreadId)
 
 
 ------------------------------------------------------------
--- * UI Type Definition
+-- * UI Types
 ------------------------------------------------------------
 
--- | A UI widget runs under a given context and any focus information from 
---   earlier widgets and maps input signals to outputs, which consists of 6 parts:
+-- $uitypes
+-- Widgets are arrows that map multiple inputs to multiple outputs.  
+-- Additionally, they have a relatively static layout argument that, 
+-- while it can change over time, is not dependent on any of its 
+-- inputs at any given moment.
 --
---    - its layout,
+-- On the input end, a widget will accept:
 --
---    - whether the widget needs to be redrawn,
+--  - a graphical context, 
 --
---    - any focus information that needs to be conveyed to future widgets
+--  - some information about which widget is in focus (for the purposes 
+--    of routing key presses and mouse clicks and potentially for drawing 
+--    the widget differently), 
 --
---    - the action (to render graphics or/and sounds),
+--  - and the current time.
 --
---    - any new ThreadIds to keep track of (for proper shutdown when finished),
+-- On the output end, a widget will produce from these inputs:
+-- 
+--  - an indicator of whether the widget needs to be redrawn,
+-- 
+--  - any focus information that needs to be conveyed to future widgets, 
+-- 
+--  - the graphics to render to display this widget,
+-- 
+--  - and any new ThreadIds to keep track of (for proper shutdown when finished).
 --
---    - and the parametrized output type.
+-- Additionally, as widgets are generic arrows, there will be a parameterized 
+-- inputs and output type.
+--
+-- In this file, we will declare the various types to make creating the overall 
+-- UI possible.  For the widget type itself, see UISF in FRP.UISF.UISF.
 
-newtype UI a = UI 
-  { unUI :: (CTX, Focus, Time, UIEvent) -> 
-            IO (Layout, DirtyBit, Focus, Action, ControlData, a) }
-
--- For reexporting:
--- | Lifts an \'IO a\' to a \'UI a\'
-ioToUI :: IO a -> UI a
-ioToUI = liftIO
 
 ------------------------------------------------------------
 -- * Control Data
@@ -61,10 +63,6 @@ type ControlData = [ThreadId]
 -- | No new thread ids.
 nullCD :: ControlData
 nullCD = []
-
--- | A thread handler for the UI monad.
-addThreadID :: ThreadId -> UI ()
-addThreadID t = UI (\(_,f,_,_) -> return (nullLayout, False, f, nullAction, [t], ()))
 
 -- | A method for merging to control data objects.
 mergeCD :: ControlData -> ControlData -> ControlData
@@ -200,6 +198,7 @@ divideCTX ctx@(CTX a ((x, y), (w, h)) c)
 -----------------
 -- | Merge two layouts into one.
 
+mergeLayout :: Flow -> Layout -> Layout -> Layout
 mergeLayout a (Layout n m u v minw minh) (Layout n' m' u' v' minw' minh') = 
   case a of
     TopDown   -> Layout (max' n n') (m + m') (max u u') (v + v') (max minw minw') (minh + minh')
@@ -212,34 +211,19 @@ mergeLayout a (Layout n m u v minw minh) (Layout n' m' u' v' minw' minh') =
 
 
 ------------------------------------------------------------
--- * Action and System State
+-- * Graphics and System State
 ------------------------------------------------------------
 
--- | Actions include both Graphics and Sound output. Even though both 
--- are indeed just IO monads, we separate them because Sound output 
--- must be immediately delivered, while graphics can wait until the 
--- next screen refresh.
-type Action = (Graphic, Sound)
--- | A type synonym for sounds.
-type Sound = IO ()
-
--- | This is used when there is no sound produced.
-nullSound = return () :: Sound
--- | This is used when no Action happens at all.
-nullAction = (nullGraphic, nullSound) :: Action
--- | Convert a Sound to an Action with no Graphic.
-justSoundAction :: Sound -> Action
-justSoundAction s = (nullGraphic, s)
--- | Convert a Graphic to an Action with no Sound.
-justGraphicAction :: Graphic -> Action
-justGraphicAction g = (g, nullSound)
-
--- | Merge two actions into one.
-mergeAction (g, s) (g', s') = (overGraphic g' g, s >> s')
-
--- | Use a context to bound the graphical effects of an action.
-scissorAction :: CTX -> Action -> Action
-scissorAction ctx (g, s) = (scissorGraphic (bounds ctx) g, s)
+-- | Merging two graphics can be achieved with overGraphic, but 
+-- the mergeGraphic function additionally constrains the graphics 
+-- based on their layouts and the context.
+-- TODO: Make sure this works as well as it should
+mergeGraphics :: CTX -> (Graphic, Layout) -> (Graphic, Layout) -> Graphic
+mergeGraphics ctx (g1, l1) (g2, l2) = case (l1 == nullLayout, l2 == nullLayout) of
+  (True,  True)  -> nullGraphic
+  (True,  False) -> g2
+  (False, True)  -> g1
+  (False, False) -> overGraphic g2 g1
 
 
 -- The Focus and DirtyBit types are for system state.
@@ -272,41 +256,6 @@ data FocusInfo =
 -- | The dirty bit is a bit to indicate if the widget needs to be redrawn.
 type DirtyBit = Bool
 
-------------------------------------------------------------
--- Monadic Instances
-------------------------------------------------------------
 
-instance Functor UI where
-  fmap f ui = ui >>= return . f
 
-instance Applicative UI where
-  pure = return
-  (<*>) = ap
-
-instance Monad UI where
-  return i = UI (\(_,foc,_,_) -> return (nullLayout, False, foc, nullAction, nullCD, i))
-
-  (UI m) >>= f = UI (\(ctx, foc, t, inp) -> do 
-    rec let (ctx1, ctx2)      = divideCTX ctx l1 layout
-        (l1, db1, foc1, a1, cd1, v1) <- m (ctx1, foc, t, inp)
-        (l2, db2, foc2, a2, cd2, v2) <- unUI (f v1) (ctx2, foc1, t, inp)
-        let action            = (if l1 == nullLayout || l2 == nullLayout then id 
-                                 else scissorAction ctx) $ mergeAction a1 a2
-            layout            = mergeLayout (flow ctx) l1 l2 
-            cd                = mergeCD cd1 cd2
-            dirtybit          = ((||) $! db1) $! db2
-    return (layout, dirtybit, foc2, action, cd, v2))
-
--- UIs are also instances of MonadFix so that we can define value
--- level recursion.
-
-instance MonadFix UI where
-  mfix f = UI aux
-    where
-      aux (ctx, foc, t, inp) = u
-        where u = do rec (l, db, foc', a, cd, r) <- unUI (f r) (ctx, foc, t, inp)
-                     return (l, db, foc', a, cd, r)
-
-instance MonadIO UI where
-  liftIO a = UI (\(_,foc,_,_) -> a >>= (\v -> return (nullLayout, False, foc, nullAction, nullCD, v)))
 

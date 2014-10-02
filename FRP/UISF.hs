@@ -42,7 +42,7 @@ module FRP.UISF
   , module Control.Arrow
   ) where
 
-import FRP.UISF.UIMonad
+import FRP.UISF.UITypes
 import FRP.UISF.UISF
 import FRP.UISF.Widget
 import FRP.UISF.SOE (Color (..))

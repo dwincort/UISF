@@ -136,7 +136,7 @@ indicating that the entry is invalid.
 
 > timeInputTextbox :: TimeLocale -> String -> String -> UISF () (SEvent UTCTime)
 > timeInputTextbox tl format start = leftRight $ proc _ -> do
->     t <- delay "" <<< textboxE start -< Nothing
+>     t <- textboxE start -< Nothing
 >     let ret = readTimeMaybe tl format t
 >     case ret of
 >       Just _ -> returnA -< ret
@@ -158,7 +158,7 @@ string.
 
 > flightBookerSF :: TimeLocale -> UTCTime -> UISF () ()
 > flightBookerSF tl currentTime = proc _ -> do
->     choice <- delay 0 <<< radio ["one-way flight","return flight"] 0 -< ()
+>     choice <- radio ["one-way flight","return flight"] 0 -< ()
 >     t1 <- timeInputTextbox tl format (formatTime tl format currentTime) -< ()
 >     t2 <- case choice of
 >             1 -> timeInputTextbox tl format (formatTime tl format currentTime) -< ()
@@ -474,7 +474,7 @@ create the UISF.
 >                                 (edge <<< button "Redo") -< () 
 >     updatesOld  <- delay [] -< updates
 >     redoListOld <- delay [] -< redoList
->     (leftClicks, rightClicks) <- delay (Nothing, Nothing) <<< circleCanvas -< 
+>     (leftClicks, rightClicks) <- circleCanvas -< 
 >           if doUpdate then Just (undoListToCircles updates) else Nothing
 >     let (updates', redoList) = case (undo, redo, leftClicks) of
 >             (Just _, _, _) -> performUndo updatesOld redoListOld
@@ -500,7 +500,7 @@ the cancel or set buttons are pressed -- we use an 'accum' to achieve this.
 >     (minorU, majorU, cancel) <- if isAdjustActive
 >                                 then do
 >                                 leftRight (label "Adjust Diameter of circle at" >>> display) -< getCenter adjustC
->                                 newR <- hSlider (2,200) defaultRadius -< ()
+>                                 newR <- hSlider (2,200) defaultRadius -< () -- fmap getRadius rightClicks
 >                                 newRU <- unique -< newR
 >                                 (setButton, cancelButton) <- leftRight $ (edge <<< button "Set") &&& 
 >                                                                          (edge <<< button "Cancel") -< ()
@@ -511,7 +511,7 @@ the cancel or set buttons are pressed -- we use an 'accum' to achieve this.
 >                     (Nothing, Just _, _)       -> removeMinor updates'
 >                     (Nothing, Nothing, Just r) -> addMinor adjustC r updates'
 >                     _ -> updates'
->     let doUpdate = isJust undo || isJust redo || isJust leftClicks || isJust rightClicks 
+>     let doUpdate = isJust undo || isJust redo || isJust leftClicks
 >                 || isJust minorU || isJust majorU || isJust cancel
 >   returnA -< ()
 >  where defaultRadius = 30

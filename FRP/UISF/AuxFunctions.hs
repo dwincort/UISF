@@ -15,6 +15,7 @@ module FRP.UISF.AuxFunctions (
     -- * Types
     SEvent, Time, DeltaT, 
     ArrowTime, time, 
+    ArrowIO, liftAIO, initialAIO, 
     -- * Useful SF Utilities (Mediators)
     constA, constSF, 
     edge, 
@@ -22,6 +23,7 @@ module FRP.UISF.AuxFunctions (
     hold, now, 
     mergeE, (~++), 
     concatA, foldA, foldSF, 
+    maybeA, evMap, 
     -- * Delays and Timers
     delay, 
     -- | delay is a unit delay.  It is exactly the delay from ArrowCircuit.
@@ -37,14 +39,15 @@ module FRP.UISF.AuxFunctions (
     -- * Signal Function Conversions
     -- $conversions
     -- *** Types
-    Automaton(..), toAutomaton, msfiToAutomaton, 
+    Automaton(..), toAutomaton, 
     -- *** Conversions
     -- $conversions2
-    toMSF, toRealTimeMSF, 
+    toRealTimeArrow, 
     async, AsyncInput(..), AsyncOutput(..)
 ) where
 
-import Prelude
+import Prelude hiding ((.), id)
+import Control.Category
 import Control.Arrow
 import Control.Arrow.Operations
 import Data.Sequence (Seq, empty, (<|), (|>), (><), 
@@ -52,13 +55,8 @@ import Data.Sequence (Seq, empty, (<|), (|>), (><),
 import qualified Data.Sequence as Seq
 import Data.Maybe (listToMaybe)
 
--- For use with MSF Conversions
-import Control.Monad.Fix
-import FRP.UISF.Types.MSF
-import Data.Functor.Identity
-
-import Control.Concurrent.MonadIO
-import Data.IORef.MonadIO
+import Control.Concurrent
+import Data.IORef
 import Data.Foldable (toList)
 import Control.DeepSeq
 
@@ -79,6 +77,10 @@ type DeltaT = Double
 -- | Instances of this class have arrowized access to the time
 class ArrowTime a where
     time :: a () Time
+
+class Arrow a => ArrowIO a where
+  liftAIO :: (b -> IO c) -> a b c
+  initialAIO :: IO d -> (d -> a b c) -> a b c
 
 --------------------------------------
 -- Useful SF Utilities (Mediators)
@@ -168,7 +170,7 @@ foldA merge i sf = h where
         returnA -< merge c d
 
 -- | For folding results of a list of signal functions
-foldSF ::  Arrow a => (b -> c -> c) -> c -> [a () b] -> a () c
+foldSF :: Arrow a => (b -> c -> c) -> c -> [a () b] -> a () c
 foldSF f b sfs =
   foldr g (constA b) sfs where
     g sfa sfb =
@@ -177,6 +179,14 @@ foldSF f b sfs =
         s2  <- sfb -< ()
         returnA -< f s1 s2
 
+maybeA :: ArrowChoice a => a () c -> a b c -> a (Maybe b) c
+maybeA nothing just = proc eb -> do
+  case eb of
+    Just b -> just -< b
+    Nothing -> nothing -< ()
+
+evMap :: ArrowChoice a => a b c -> a (SEvent b) (SEvent c)
+evMap a = maybeA (constA Nothing) (a >>> arr Just)
 
 --------------------------------------
 -- Delays and Timers
@@ -429,27 +439,65 @@ snapshot_ = flip $ fmap . const -- same as ->>
 -- 
 -- Rather than use MSF Identity as our default pure function, we present 
 -- the Automaton type:
-newtype Automaton a b = Automaton (a -> (b, Automaton a b))
+data Automaton a b = Automaton (a -> (b, Automaton a b))
+
+instance Category Automaton where
+  id = Automaton $ \x -> (x, id)
+  (Automaton g) . (Automaton f) = Automaton (h f g)
+    where
+      h f g x =
+        let (y, Automaton f') = f x
+            (z, Automaton g') = g y
+        in (z, Automaton (h f' g'))
+
+instance Arrow Automaton where
+  arr f = g
+    where g = Automaton (\x -> (f x, g))
+  first (Automaton f) = Automaton (g f)
+    where
+      g f (x, z) = ((y, z), Automaton (g f'))
+        where (y, Automaton f') = f x
+  (Automaton f) &&& (Automaton g) = Automaton (h f g)
+    where
+      h f g x =
+        let (y, Automaton f') = f x
+            (z, Automaton g') = g x 
+        in ((y, z), Automaton (h f' g'))
+  (Automaton f) *** (Automaton g) = Automaton (h f g)
+    where
+      h f g x =
+        let (y, Automaton f') = f (fst x)
+            (z, Automaton g') = g (snd x) 
+        in ((y, z), Automaton (h f' g'))
+
+instance ArrowLoop Automaton where
+  loop (Automaton sf) = Automaton (g sf)
+    where
+      g f x = (y, Automaton (g f'))
+        where ((y, z), Automaton f') = f (x, z)
+
+instance ArrowChoice Automaton where
+   left ~(Automaton sf) = Automaton (g sf)
+       where 
+         g f x = case x of
+                   Left a -> let (y, Automaton f') = f a in (Left y, Automaton (g f'))
+                   Right b -> (Right b, Automaton (g f))
+
+instance ArrowCircuit Automaton where
+  delay i = Automaton (f i)
+    where f i x = (i, Automaton (f x))
+
+
+
 
 -- | toAutomaton lifts a pure function to an Automaton.
 toAutomaton :: (a -> b) -> Automaton a b
 toAutomaton f = g where g = Automaton $ \a -> (f a, g)
 
--- | msfiToAutomaton lifts a pure MSF (i.e. one in the Identity monad) to 
---   an Automaton.
-msfiToAutomaton :: MSF Identity a b -> Automaton a b
-msfiToAutomaton (MSF msf) = Automaton $ second msfiToAutomaton . runIdentity . msf
-
 
 -- $conversions2
--- The following two functions are for lifting Automatons to MSFs.  The first 
--- one is a quick and dirty solution, and the second one appropriately 
--- converts a simulated time Automaton into a real time one.
-
--- | This function should be avoided, as it directly converts the automaton 
---   with no real regard for time.
-toMSF :: Monad m => Automaton a b -> MSF m a b
-toMSF (Automaton f) = MSF $ return . second toMSF . f
+-- The following function is for lifting an Automaton to an ArrowIO by 
+-- appropriately converting the "simulated time" Automaton into realtime.
 
 -- | The clockrate is the simulated rate of the input signal function.
 --   The buffer is the amount of time the given signal function is 
@@ -464,43 +512,34 @@ toMSF (Automaton f) = MSF $ return . second toMSF . f
 --   Note also that the caller can check the time stamp on the element 
 --   at the end of the list to see if the inner, \"simulated\" signal 
 --   function is performing as fast as it should.
-toRealTimeMSF :: forall m a b . (Monad m, MonadIO m, MonadFix m, NFData b) => 
-                 Double             -- ^ Clockrate
-              -> DeltaT             -- ^ Amount of time to buffer
-              -> (ThreadId -> m ()) -- ^ The thread handler
-              -> Automaton a b      -- ^ The automaton to convert to realtime
-              -> MSF m (a, Time) [(b, Time)]
-toRealTimeMSF clockrate buffer threadHandler sf = MSF initFun
-  where
-    -- initFun creates some refs and threads and is never used again.
-    -- All future processing is done in sfFun and the spawned worker thread.
-    initFun :: (a, Double) -> m ([(b, Double)], MSF m (a, Double) [(b, Double)])
-    initFun (a, t) = do
-        inp <- newIORef a
-        out <- newIORef empty
-        timevar <- newEmptyMVar
-        tid <- liftIO $ forkIO $ worker inp out timevar 1 1 sf
-        threadHandler tid
-        sfFun inp out timevar (a, t)
-    -- sfFun communicates with the worker thread, sending it the input values 
-    -- and collecting from it the output values.
-    sfFun :: IORef a -> IORef (Seq (b, Double)) -> MVar Double 
-          -> (a, Double) -> m ([(b, Double)], MSF m (a, Double) [(b, Double)])
-    sfFun inp out timevar (a, t) = do
-        writeIORef inp a        -- send the worker the new input
-        tryPutMVar timevar t    -- update the time for the worker
-        b <- atomicModifyIORef out $ Seq.spanl (\(_,t0) -> t >= t0) --collect ready results
-        return (toList b, MSF (sfFun inp out timevar))
-    -- worker processes the inner, "simulated" signal function.
-    worker :: IORef a -> IORef (Seq (b, Double)) -> MVar Double 
-           -> DeltaT -> Integer -> Automaton a b -> IO ()
-    worker inp out timevar t count (Automaton sf) = do
-        a <- readIORef inp      -- get the latest input
-        let (b, sf') = sf a     -- do the calculation
-        s <- deepseq b $ atomicModifyIORef out (\s -> (s |> (b, fromIntegral count/clockrate), s))
-        t' <- if Seq.length s > 0 && snd (seqLastElem s) >= t+buffer then takeMVar timevar else return t
-        worker inp out timevar t' (count+1) sf'
-    seqLastElem s = Seq.index s (Seq.length s - 1)
+toRealTimeArrow :: (ArrowIO a, NFData c) => 
+                   Double             -- ^ Clockrate
+                -> DeltaT             -- ^ Amount of time to buffer
+                -> (ThreadId -> a () ()) -- ^ The thread handler
+                -> Automaton b c      -- ^ The automaton to convert to realtime
+                -> a (b, Time) [(c, Time)]
+toRealTimeArrow clockrate buffer threadHandler sf = initialAIO iod darr where
+  iod = do
+    inp <- newEmptyMVar
+    out <- newIORef empty
+    timevar <- newEmptyMVar
+    tid <- forkIO $ worker inp out timevar 1 1 sf
+    return (tid, inp, out, timevar)
+  darr (tid, inp, out, timevar) = proc (b,t) -> do
+    _ <- threadHandler tid -< ()
+    _ <- liftAIO (\b -> tryTakeMVar inp >> putMVar inp b) -< b -- send the worker the new input
+    _ <- liftAIO (tryPutMVar timevar) -< t  -- update the time for the worker
+    c <- liftAIO (atomicModifyIORef out) -< Seq.spanl (\(_,t0) -> t >= t0) --collect ready results
+    returnA -< toList c
+  -- worker processes the inner, "simulated" signal function.
+  worker inp out timevar t count (Automaton sf) = do
+      b <- readMVar inp     -- get the latest input
+      let (c, sf') = sf b   -- do the calculation
+      s <- deepseq c $ atomicModifyIORef out (\s -> (s |> (c, fromIntegral count/clockrate), s))
+      t' <- if Seq.length s > 0 && snd (seqLastElem s) >= t+buffer then takeMVar timevar else return t
+      worker inp out timevar t' (count+1) sf'
+  seqLastElem s = Seq.index s (Seq.length s - 1)
+
 
 
 data AsyncInput a = AINoValue | AIClearBuffer | AIValue a
@@ -516,46 +555,43 @@ data AsyncOutput b = AONoValue | AOCalculating Int | AOValue b
 --   nothing, and the output stream is either a result value, a AOCalculating 
 --   indicating that the asynchronous function is calculating and giving the 
 --   buffer size, or nothing.
-async :: forall m a b. (Monad m, MonadIO m, MonadFix m, NFData b) => 
-                 (ThreadId -> m ()) -- ^ The thread handler
-              -> Automaton a b      -- ^ The automaton to convert to asynchronize
-              -> MSF m (AsyncInput a) (AsyncOutput b)
-async threadHandler sf = delay AINoValue >>> MSF initFun
-  where
-    -- initFun creates some refs and threads and is never used again.
-    -- All future processing is done in sfFun and the spawned worker thread.
-    initFun :: (AsyncInput a) -> m ((AsyncOutput b), MSF m (AsyncInput a) (AsyncOutput b))
-    initFun ea = do
-        inp <- newIORef empty
-        out <- newIORef empty
-        proceed <- newEmptyMVar
-        tid <- liftIO $ forkIO $ worker proceed inp out sf
-        threadHandler tid
-        sfFun 0 proceed inp out ea
-    -- sfFun communicates with the worker thread, sending it the input values 
-    -- and collecting from it the output values.
-    sfFun :: Int -> MVar () -> IORef (Seq a) -> IORef (Seq b) 
-          -> (AsyncInput a) -> m ((AsyncOutput b), MSF m (AsyncInput a) (AsyncOutput b))
-    sfFun count proceed inp out ea = do
-        count' <- case ea of
-          AIValue a -> atomicModifyIORef inp (\is -> (is |> a, ())) >> tryPutMVar proceed () >> return (count+1)
-          AIClearBuffer -> atomicModifyIORef inp (\_ -> (empty, ())) >> tryTakeMVar proceed >> return 0
-          AINoValue -> return count
-        b <- atomicModifyIORef out seqRestHead  -- collect any ready results
+async :: (ArrowIO a, ArrowLoop a, ArrowCircuit a, ArrowChoice a, NFData c) => 
+         (ThreadId -> a () ()) -- ^ The thread handler
+      -> Automaton b c      -- ^ The automaton to convert to asynchronize
+      -> a (AsyncInput b) (AsyncOutput c)
+async threadHandler sf = {- delay AINoValue >>> -} initialAIO iod darr where
+  iod = do
+    inp <- newIORef empty
+    out <- newIORef empty
+    proceed <- newEmptyMVar
+    tid <- forkIO $ worker proceed inp out sf
+    return (tid, proceed, inp, out)
+  -- count should start at 0
+  darr (tid, proceed, inp, out) = proc ai -> do
+    rec count <- delay 0 -< count''
+        count' <- case ai of
+          AIValue a -> do
+            _ <- liftAIO (\a -> atomicModifyIORef inp (\is -> (is |> a, ())) >> tryPutMVar proceed ()) -< a
+            returnA -< count+1
+          AIClearBuffer -> do
+            _ <- liftAIO (const $ atomicModifyIORef inp (\_ -> (empty, ())) >> tryTakeMVar proceed) -< ()
+            returnA -< 0
+          AINoValue -> returnA -< count
+        b <- liftAIO (const $ atomicModifyIORef out seqRestHead) -< ()
         let (b', count'') = maybe (Nothing, count') (\x -> (Just x, count'-1)) b
             b'' = maybe (if count'' <= 0 then AONoValue else AOCalculating count'') AOValue b'
-        return (b'', MSF (sfFun count'' proceed inp out))
-    -- worker processes the inner, "simulated" signal function.
-    worker :: MVar () -> IORef (Seq a) -> IORef (Seq b) -> Automaton a b -> IO ()
-    worker proceed inp out (Automaton sf) = do
-        ea <- atomicModifyIORef inp seqRestHead
-        case ea of
-          Nothing -> takeMVar proceed >> worker proceed inp out (Automaton sf)
-          Just a -> do
-            let (b, sf') = sf a     -- do the calculation
-            deepseq b $ atomicModifyIORef out (\s -> (s |> b, ()))
-            worker proceed inp out sf'
-    seqRestHead s = case viewl s of
-        EmptyL  -> (s,  Nothing)
-        a :< s' -> (s', Just a)
+    returnA -< b''
+  -- worker processes the inner, "simulated" signal function.
+  -- worker :: MVar () -> IORef (Seq a) -> IORef (Seq b) -> Automaton a b -> IO ()
+  worker proceed inp out (Automaton sf) = do
+      ea <- atomicModifyIORef inp seqRestHead
+      case ea of
+        Nothing -> takeMVar proceed >> worker proceed inp out (Automaton sf)
+        Just a -> do
+          let (b, sf') = sf a     -- do the calculation
+          deepseq b $ atomicModifyIORef out (\s -> (s |> b, ()))
+          worker proceed inp out sf'
+  seqRestHead s = case viewl s of
+      EmptyL  -> (s,  Nothing)
+      a :< s' -> (s', Just a)
 
