@@ -124,7 +124,7 @@ pinochleSF = proc _ -> do
             _ -> Nothing
     restr <- checkbox "Restrict trump suit?" False -< ()
     b <- edge <<< button "Calculate meld from kitty" -< ()
-    kre <- (asyncUISF $ toAutomaton $ uncurry $ uncurry kittyResult) -< toAsyncInput $
+    kre <- (asyncUISF $ arr $ uncurry $ uncurry kittyResult) -< toAsyncInput $
             fmap (const ((hand, kittenSizeStr), if restr then Just trump else Nothing)) b
     k <- hold [] -< case (clearEv, kre) of
         (Just _, _) -> Just []

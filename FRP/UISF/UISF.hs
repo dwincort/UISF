@@ -184,14 +184,14 @@ mkUISF l f = UISF (const l) fun where
 -- Note also that the caller can check the time stamp on the element 
 -- at the end of the list to see if the inner, "simulated" signal 
 -- function is performing as fast as it should.
-convertToUISF :: NFData b => Double -> Double -> Automaton a b -> UISF a [(b, Time)]
+convertToUISF :: NFData b => Double -> Double -> Automaton (->) a b -> UISF a [(b, Time)]
 convertToUISF clockrate buffer sf = proc a -> do
   t <- time -< ()
   toRealTimeArrow clockrate buffer addThreadId sf -< (a, t)
 
 
 -- | We can also lift a signal function to a UISF asynchronously.
-asyncUISF :: NFData b => Automaton a b -> UISF (AsyncInput a) (AsyncOutput b)
+asyncUISF :: NFData b => Automaton (->) a b -> UISF (AsyncInput a) (AsyncOutput b)
 asyncUISF = async addThreadId
 
 

@@ -39,7 +39,7 @@ module FRP.UISF.AuxFunctions (
     -- * Signal Function Conversions
     -- $conversions
     -- *** Types
-    Automaton(..), toAutomaton, 
+    Automaton(..), 
     -- *** Conversions
     -- $conversions2
     toRealTimeArrow, 
@@ -50,6 +50,7 @@ import Prelude hiding ((.), id)
 import Control.Category
 import Control.Arrow
 import Control.Arrow.Operations
+import Control.Arrow.Transformer.Automaton
 import Data.Sequence (Seq, empty, (<|), (|>), (><), 
                       viewl, ViewL(..), viewr, ViewR(..))
 import qualified Data.Sequence as Seq
@@ -436,63 +437,6 @@ snapshot_ = flip $ fmap . const -- same as ->>
 -- recommended.  async lets the pure computation compute in its own thread, 
 -- but it puts no restrictions on speed.  toRealTimeMSF takes a signal rate 
 -- argument and attempts to mediate between real and virtual time.
--- 
--- Rather than use MSF Identity as our default pure function, we present 
--- the Automaton type:
-data Automaton a b = Automaton (a -> (b, Automaton a b))
-
-instance Category Automaton where
-  id = Automaton $ \x -> (x, id)
-  (Automaton g) . (Automaton f) = Automaton (h f g)
-    where
-      h f g x =
-        let (y, Automaton f') = f x
-            (z, Automaton g') = g y
-        in (z, Automaton (h f' g'))
-
-instance Arrow Automaton where
-  arr f = g
-    where g = Automaton (\x -> (f x, g))
-  first (Automaton f) = Automaton (g f)
-    where
-      g f (x, z) = ((y, z), Automaton (g f'))
-        where (y, Automaton f') = f x
-  (Automaton f) &&& (Automaton g) = Automaton (h f g)
-    where
-      h f g x =
-        let (y, Automaton f') = f x
-            (z, Automaton g') = g x 
-        in ((y, z), Automaton (h f' g'))
-  (Automaton f) *** (Automaton g) = Automaton (h f g)
-    where
-      h f g x =
-        let (y, Automaton f') = f (fst x)
-            (z, Automaton g') = g (snd x) 
-        in ((y, z), Automaton (h f' g'))
-
-instance ArrowLoop Automaton where
-  loop (Automaton sf) = Automaton (g sf)
-    where
-      g f x = (y, Automaton (g f'))
-        where ((y, z), Automaton f') = f (x, z)
-
-instance ArrowChoice Automaton where
-   left ~(Automaton sf) = Automaton (g sf)
-       where 
-         g f x = case x of
-                   Left a -> let (y, Automaton f') = f a in (Left y, Automaton (g f'))
-                   Right b -> (Right b, Automaton (g f))
-
-instance ArrowCircuit Automaton where
-  delay i = Automaton (f i)
-    where f i x = (i, Automaton (f x))
-
-
-
-
--- | toAutomaton lifts a pure function to an Automaton.
-toAutomaton :: (a -> b) -> Automaton a b
-toAutomaton f = g where g = Automaton $ \a -> (f a, g)
 
 
 -- $conversions2
@@ -516,7 +460,7 @@ toRealTimeArrow :: (ArrowIO a, NFData c) =>
                    Double             -- ^ Clockrate
                 -> DeltaT             -- ^ Amount of time to buffer
                 -> (ThreadId -> a () ()) -- ^ The thread handler
-                -> Automaton b c      -- ^ The automaton to convert to realtime
+                -> (Automaton (->) b c)      -- ^ The automaton to convert to realtime
                 -> a (b, Time) [(c, Time)]
 toRealTimeArrow clockrate buffer threadHandler sf = initialAIO iod darr where
   iod = do
@@ -557,7 +501,7 @@ data AsyncOutput b = AONoValue | AOCalculating Int | AOValue b
 --   buffer size, or nothing.
 async :: (ArrowIO a, ArrowLoop a, ArrowCircuit a, ArrowChoice a, NFData c) => 
          (ThreadId -> a () ()) -- ^ The thread handler
-      -> Automaton b c      -- ^ The automaton to convert to asynchronize
+      -> (Automaton (->) b c)  -- ^ The automaton to convert to asynchronize
       -> a (AsyncInput b) (AsyncOutput c)
 async threadHandler sf = {- delay AINoValue >>> -} initialAIO iod darr where
   iod = do
