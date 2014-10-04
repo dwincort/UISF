@@ -437,7 +437,7 @@ histogram layout =
         process (Just a) _       _ _ = ((), Just a, True)
         draw (xy, (w, h)) _ = translateGraphic xy . mymap (polyline . mkPts)
           where mkPts l  = zip (reverse $ xs $ length l) (map adjust . normalize . reverse $ l)
-                xs n     = [0,(w `div` (n-1))..w]
+                xs n     = let k = n-1 in 0 : map (\x -> truncate $ fromIntegral (w*x) / fromIntegral k) [1..k]
                 adjust i = buffer + truncate (fromIntegral (h - 2*buffer) * (1 - i))
                 normalize lst = map (/m) lst where m = maximum lst
                 buffer = truncate $ fromIntegral h / 10
@@ -454,7 +454,9 @@ histogramWithScale layout =
         process (Just a) _       _ _ = ((), Just a, True)
         draw (xy, (w, h)) _ = mymap (polyline . mkPts) mkScale
           where mkPts l  = zip (reverse $ xs $ length l) (map adjust . normalize . reverse $ l)
-                xs n     = [sidebuffer,(sidebuffer+((w-sidebuffer*2) `div` (n-1)))..(w-sidebuffer)]
+                xs n     = let k  = n-1
+                               w' = w - sidebuffer * 2
+                           in sidebuffer : map (\x -> sidebuffer + (truncate $ fromIntegral (w'*x) / fromIntegral k)) [1..k]
                 adjust i = bottombuffer + truncate (fromIntegral (h - topbuffer - bottombuffer) * (1 - i))
                 normalize lst = map (/m) lst where m = maximum lst
                 topbuffer = truncate $ fromIntegral h / 10
