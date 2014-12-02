@@ -14,6 +14,8 @@
 
 module FRP.UISF.UISF (
     UISF(..),
+    uisfSource, uisfSink, uisfPipe,
+    uisfSourceE, uisfSinkE, uisfPipeE,
     -- * UISF Getters
     getTime, getCTX, getEvents, getFocusData, addThreadId, getMousePosition, 
     -- * UISF constructors, transformers, and converters
@@ -125,6 +127,35 @@ instance ArrowTime UISF where
 
 
 ------------------------------------------------------------
+-- * UISF IO Lifters
+------------------------------------------------------------
+
+-- | Lift an IO source to UISF.
+uisfSource :: IO b -> UISF () b
+uisfSource = liftAIO . const
+
+-- | Lift an IO sink to UISF.
+uisfSink :: (a -> IO ()) -> UISF a ()
+uisfSink = liftAIO
+
+-- | Lift an IO pipe to UISF.
+uisfPipe :: (a -> IO b) -> UISF a b
+uisfPipe = liftAIO
+
+-- | Lift an IO source to an event-based UISF.
+uisfSourceE :: IO b -> UISF (SEvent ()) (SEvent b)
+uisfSourceE = evMap . uisfSource
+
+-- | Lift an IO sink to an event-based UISF.
+uisfSinkE :: (a -> IO ()) -> UISF (SEvent a) (SEvent ())
+uisfSinkE = evMap . uisfSink
+
+-- | Lift an IO pipe to an event-based UISF.
+uisfPipe :: (a -> IO b) -> UISF (SEvent a) (SEvent b)
+uisfPipe = evMap . uisfPipe
+
+
+------------------------------------------------------------
 -- * UISF Getters and Convenience Constructor
 ------------------------------------------------------------
 
@@ -167,7 +198,7 @@ mkUISF l f = UISF (const l) fun where
 ------------------------------------------------------------
 -- * UISF Lifting
 ------------------------------------------------------------
--- $lifting The following two functions are for lifting SFs to UISFs.  
+-- $lifting The following two functions are for lifting Automatons to UISFs.  
 
 -- | This is the standard one that appropriately keeps track of 
 --   simulated time vs real time.  
