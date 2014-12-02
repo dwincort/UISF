@@ -44,7 +44,7 @@ import Control.Arrow.Operations
 import FRP.UISF.SOE
 import FRP.UISF.UITypes
 
-import FRP.UISF.AuxFunctions (Automaton, Time, toRealTimeArrow, 
+import FRP.UISF.AuxFunctions (Automaton, Time, toRealTimeArrow, evMap, 
                               SEvent, ArrowTime (..), ArrowIO (..),
                               async, AsyncInput (..), AsyncOutput (..))
 
@@ -151,8 +151,8 @@ uisfSinkE :: (a -> IO ()) -> UISF (SEvent a) (SEvent ())
 uisfSinkE = evMap . uisfSink
 
 -- | Lift an IO pipe to an event-based UISF.
-uisfPipe :: (a -> IO b) -> UISF (SEvent a) (SEvent b)
-uisfPipe = evMap . uisfPipe
+uisfPipeE :: (a -> IO b) -> UISF (SEvent a) (SEvent b)
+uisfPipeE = evMap . uisfPipe
 
 
 ------------------------------------------------------------
