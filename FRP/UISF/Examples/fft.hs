@@ -133,4 +133,4 @@ fftEx = proc _ -> do
 
 -- This test is run separately from the others.
 main :: IO ()
-main = runUI (500,600) "FFT Example" fftEx
+main = runUI (defaultUIParams {uiSize=(500, 600), uiTitle="FFT Example"}) fftEx

@@ -67,7 +67,7 @@ This is the guts of the counter, and to run it, we merely need
 to pass it to runUI.
 
 > counter :: IO ()
-> counter = runUI (250,24) "Counter" counterSF
+> counter = runUI (defaultUIParams {uiSize=(250, 24), uiTitle="Counter"}) counterSF
 > gui1 = counter
 
 
@@ -107,7 +107,7 @@ so we do this twice, once for each textbox.
 >           updateF = fmap (\c -> show $ round $ c * (9/5) + 32) cNum
 >   returnA -< ()
 >
-> tempConvert = runUI (400,24) "Temp Converter" tempCovertSF
+> tempConvert = runUI (defaultUIParams {uiSize=(400, 24), uiTitle="Temp Converter"}) tempCovertSF
 > gui2 = tempConvert
 
 
@@ -182,7 +182,8 @@ string.
 >         verifyGreater (Just t1) (Just t2) = t1 < t2
 >         verifyGreater _ _ = False
 > 
-> flightBooker = getCurrentTime >>= \time -> runUI (800,200) "Flight Booker" (flightBookerSF defaultTimeLocale time)
+> flightBooker = getCurrentTime >>= \time -> runUI (defaultUIParams {uiSize=(800, 200), uiTitle="Flight Booker"}) 
+>                                                  (flightBookerSF defaultTimeLocale time)
 > gui3 = flightBooker
 
 
@@ -230,7 +231,7 @@ we must apply a delay to it to prevent an infinite recursion.
 >                           _ -> e + dt
 >     returnA -< ()
 > 
-> timerGUI = runUI (800,200) "Timer" timerGUISF
+> timerGUI = runUI (defaultUIParams {uiSize=(800, 200), uiTitle="Timer"}) timerGUISF
 > gui4 = timerGUI
 
 
@@ -343,7 +344,7 @@ arrow combinators.  Based on button presses, we update the database.
 >     filterFun str name = and (map (\s -> isInfixOf s (map toLower $ show name)) (words (map toLower str)))
 >     lst `at` index = if index >= length lst || index < 0 then NameEntry "" "" else lst!!index
 > 
-> crud = runUI (450, 400) "CRUD" (crudSF defaultnames)
+> crud = runUI (defaultUIParams {uiSize=(450, 400), uiTitle="CRUD"}) (crudSF defaultnames)
 > gui5 = crud
 
 
@@ -516,6 +517,6 @@ the cancel or set buttons are pressed -- we use an 'accum' to achieve this.
 >   returnA -< ()
 >  where defaultRadius = 30
 > 
-> circleDraw = runUI (450, 400) "Circle Draw" circleDrawSF
+> circleDraw = runUI (defaultUIParams {uiSize=(450, 400), uiTitle="Circle Draw"}) circleDrawSF
 > gui6 = circleDraw
 

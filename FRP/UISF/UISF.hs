@@ -30,6 +30,7 @@ module FRP.UISF.UISF (
     conjoin, unconjoin, 
     setLayout, setSize, pad, 
     -- * Execute UI Program
+    UIParams (..), defaultUIParams,
     runUI, runUI'
 
 ) where
@@ -52,6 +53,8 @@ import Control.Monad (when)
 import qualified Graphics.UI.GLFW as GLFW (sleep, SpecialKey (..))
 import Control.Concurrent
 import Control.DeepSeq
+import Data.IORef
+import Control.Exception
 
 
 ------------------------------------------------------------
@@ -277,65 +280,99 @@ pad args@(w,n,e,s) (UISF fl f) = UISF layout h where
 -- * Execute UI Program
 ------------------------------------------------------------
 
-defaultSize :: Dimension
-defaultSize = (300, 300)
-defaultCTX :: Dimension -> CTX
-defaultCTX size = CTX TopDown ((0,0), size) False
+-- | The UIParams data type provides an interface for modifying some 
+--   of the settings for runUI without forcing runUI to take a zillion 
+--   arguments.  Typical usage will be to modify the below defaultUIParams 
+--   using record syntax.
+data UIParams = UIParams {
+    uiInitialize :: IO ()   -- ^ An initialization action.
+  , uiClose :: IO ()        -- ^ A termination action.
+  , uiTitle :: String       -- ^ The UI window's title.
+  , uiSize :: Dimension     -- ^ The size of the UI window.
+  , uiInitFlow :: Flow      -- ^ The initial Flow setting.
+  , uiTickDelay :: Double   -- ^ How long the UI will sleep between clock 
+                            --   ticks if no events are detected.  This 
+                            --   should be probably be set to O(milliseconds), 
+                            --   but it can be set to 0 for better performance 
+                            --   (but also higher CPU usage)
+}
+
+-- | This is the default UIParams value and what is used in runUI'.
+defaultUIParams :: UIParams
+defaultUIParams = UIParams {
+    uiInitialize = return (),
+    uiClose = return (),
+    uiTitle = "User Interface",
+    uiSize = (300, 300),
+    uiInitFlow = TopDown,
+    uiTickDelay = 0.001
+}
+
+defaultCTX :: Flow -> Dimension -> CTX
+defaultCTX flow size = CTX flow ((0,0), size) False
 defaultFocus :: Focus
 defaultFocus = (0, SetFocusTo 0)
 resetFocus :: (WidgetID, FocusInfo) -> (WidgetID, FocusInfo)
 resetFocus (n,SetFocusTo i) = (0, SetFocusTo $ (i+n) `rem` n)
 resetFocus (_,_) = (0,NoFocus)
 
--- | Run the UISF with the default size (300 x 300).
-runUI' :: String -> UISF () () -> IO ()
-runUI' = runUI defaultSize
+-- | Run the UISF with the default settings.
+runUI' :: UISF () () -> IO ()
+runUI' = runUI defaultUIParams
 
--- | Run the UISF
-runUI  :: Dimension -> String -> UISF () () -> IO ()
-runUI windowSize title sf = runGraphics $ do
-  w <- openWindowEx title (Just (0,0)) (Just windowSize) drawBufferedGraphic
-  (events, addEv) <- makeStream
-  let pollEvents = windowUser w addEv
-  -- poll events before we start to make sure event queue isn't empty
-  t0 <- timeGetTime
-  pollEvents
-  let render :: Bool -> [UIEvent] -> Focus -> UISF () () -> [ThreadId] -> IO [ThreadId]
-      render drawit' (inp:inps) lastFocus uisf tids = do
-        wSize <- getMainWindowSize
-        t <- timeGetTime
-        let rt = t - t0
-        let ctx = defaultCTX wSize
-        (dirty, foc, graphic, tids', _, uisf') <- uisfFun uisf (ctx, lastFocus, rt, inp, ())
-        -- delay graphical output when event queue is not empty
-        setGraphic' w graphic
-        let drawit = dirty || drawit'
-            newtids = tids'++tids
-            foc' = resetFocus foc
-        foc' `seq` newtids `seq` case inp of
-          -- Timer only comes in when we are done processing user events
-          NoUIEvent -> do 
-            -- output graphics 
-            when drawit $ setDirty w
-            quit <- pollEvents
-            if quit then return newtids
-                    else render False inps foc' uisf' newtids
-          _ -> render drawit inps foc' uisf' newtids
-      render _ [] _ _ tids = return tids
-  tids <- render True events defaultFocus sf []
-  -- wait a little while before all Midi messages are flushed
-  GLFW.sleep 0.5
-  mapM_ killThread tids
+-- | Run the UISF with the given parameters.
+runUI  :: UIParams -> UISF () () -> IO ()
+runUI p sf = do
+    tidref <- newIORef []
+    uiInitialize p
+    finally (terminate tidref) (go tidref)
+  where
+    terminate tidref = do
+      tids <- readIORef tidref
+      mapM_ killThread tids
+      uiClose p
+    go tidref = runGraphics $ do
+      w <- openWindowEx (uiTitle p) (Just (0,0)) (Just $ uiSize p) drawBufferedGraphic
+      (events, addEv) <- makeStream
+      let pollEvents = windowUser (uiTickDelay p) w addEv
+      -- poll events before we start to make sure event queue isn't empty
+      t0 <- timeGetTime
+      pollEvents
+      let render :: Bool -> [UIEvent] -> Focus -> UISF () () -> IO ()
+          render drawit' (inp:inps) lastFocus uisf = do
+            wSize <- getMainWindowSize
+            t <- timeGetTime
+            let rt = t - t0
+            let ctx = defaultCTX (uiInitFlow p) wSize
+            (dirty, foc, graphic, tids', _, uisf') <- uisfFun uisf (ctx, lastFocus, rt, inp, ())
+            -- delay graphical output when event queue is not empty
+            setGraphic' w graphic
+            let drawit = dirty || drawit'
+                foc' = resetFocus foc
+            atomicModifyIORef' tidref (\tids -> (tids'++tids, ()))
+            foc' `seq` case inp of
+              -- Timer only comes in when we are done processing user events
+              NoUIEvent -> do 
+                -- output graphics 
+                when drawit $ setDirty w
+                quit <- pollEvents
+                if quit then return ()
+                        else render False inps foc' uisf'
+              _ -> render drawit inps foc' uisf'
+          render _ [] _ _ = return ()
+      render True events defaultFocus sf
+      -- wait a little while before all Midi messages are flushed
+      GLFW.sleep 0.5
 
-windowUser :: Window -> (UIEvent -> IO ()) -> IO Bool
-windowUser w addEv = do 
+windowUser :: Double -> Window -> (UIEvent -> IO ()) -> IO Bool
+windowUser tickDelay w addEv = do 
   quit <- getEvents
   addEv NoUIEvent
   return quit
  where 
   getEvents :: IO Bool
   getEvents = do
-    mev <- maybeGetWindowEvent 0.001 w
+    mev <- maybeGetWindowEvent tickDelay w
     case mev of
       Nothing -> return False
       Just e  -> case e of

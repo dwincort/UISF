@@ -1,8 +1,10 @@
 module FRP.UISF
   ( -- UI functions
     UISF 
-  , runUI'              -- :: String -> UISF () () -> IO ()
-  , runUI               -- :: Dimension -> String -> UISF () () -> IO ()
+  , UIParams (..)       -- data UIParams = UIParams { ... }
+  , defaultUIParams     -- :: UIParams
+  , runUI'              -- :: UISF () () -> IO ()
+  , runUI               -- :: UIParams -> UISF () () -> IO ()
   , convertToUISF       -- :: NFData b => Double -> Double -> SF a b -> UISF a ([b], Bool)
   , asyncUISF           -- :: NFData b => Automaton a b -> UISF (ASyncInput a) (ASyncOutput b)
   , AsyncInput (..)     -- data AsyncInput a = AINoValue | AIClearBuffer | AIValue a

@@ -41,7 +41,7 @@ defaultnames = [
 
 
 -- | This function will run the crud GUI with the default names.
-crud = runUI (350, 400) "CRUD" (crudUISF defaultnames)
+crud = runUI (defaultUIParams {uiSize=(350, 400), uiTitle="CRUD"}) (crudUISF defaultnames)
 -- | main = crud
 main = crud
 

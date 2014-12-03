@@ -95,7 +95,7 @@ textboxdemo = proc _ -> do
 -- behavior built in to the GUI.  Pressing tab cycles through focuable 
 -- elements, and pressing shift-tab cycles in reverse.
 main :: IO ()
-main = runUI (500,500) "UI Demo" $ 
+main = runUI (defaultUIParams {uiSize=(500, 500)}) $ 
   (leftRight $ (bottomUp $ timeEx >>> buttonEx) >>> checkboxEx >>> radioButtonEx) >>>
   (leftRight $ shoppinglist >>> colorDemo) >>> textboxdemo
 
