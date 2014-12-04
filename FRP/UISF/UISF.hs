@@ -325,14 +325,15 @@ runUI  :: UIParams -> UISF () () -> IO ()
 runUI p sf = do
     tidref <- newIORef []
     uiInitialize p
-    finally (terminate tidref) (go tidref)
+    w <- openWindowEx (uiTitle p) (Just (0,0)) (Just $ uiSize p) drawBufferedGraphic
+    finally (go tidref w) (terminate tidref w)
   where
-    terminate tidref = do
+    terminate tidref w = do
+      closeWindow w
       tids <- readIORef tidref
       mapM_ killThread tids
       uiClose p
-    go tidref = runGraphics $ do
-      w <- openWindowEx (uiTitle p) (Just (0,0)) (Just $ uiSize p) drawBufferedGraphic
+    go tidref w = runGraphics $ do
       (events, addEv) <- makeStream
       let pollEvents = windowUser (uiTickDelay p) w addEv
       -- poll events before we start to make sure event queue isn't empty
