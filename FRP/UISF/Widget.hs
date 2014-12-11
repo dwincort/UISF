@@ -510,7 +510,7 @@ mkWidget i layout comp draw = proc a -> do
       (b, s') <- mkUISF layout aux -< (a, s)
   returnA -< b
     where
-      aux (ctx,f,t,e,(a,s)) = (db, f, g, nullCD, (b, s'))
+      aux (ctx,f,t,e,(a,s)) = (db, f, g, nullTP, (b, s'))
         where
           rect = bounds ctx
           (b, s', db) = comp a s rect e
@@ -523,7 +523,7 @@ mkBasicWidget :: Layout               -- ^ layout
               -> (Rect -> Graphic)    -- ^ drawing routine
               -> UISF a a
 mkBasicWidget layout draw = mkUISF layout $ \(ctx, f, _, _, a) ->
-  (False, f, draw $ bounds ctx, nullCD, a)
+  (False, f, draw $ bounds ctx, nullTP, a)
 
 
 -- | The toggle is useful in the creation of both 'checkbox'es and 'radio' 

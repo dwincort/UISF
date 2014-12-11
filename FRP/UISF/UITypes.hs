@@ -12,9 +12,7 @@
 module FRP.UISF.UITypes where
 
 import FRP.UISF.SOE
-
-import Control.Concurrent (ThreadId)
-
+import FRP.UISF.AuxFunctions (mergeE)
 
 ------------------------------------------------------------
 -- * UI Types
@@ -58,15 +56,15 @@ import Control.Concurrent (ThreadId)
 ------------------------------------------------------------
 
 -- | The control data is simply a list of Thread Ids.
-type ControlData = [ThreadId]
+type TerminationProc = Maybe (IO ())
 
 -- | No new thread ids.
-nullCD :: ControlData
-nullCD = []
+nullTP :: TerminationProc
+nullTP = Nothing
 
 -- | A method for merging to control data objects.
-mergeCD :: ControlData -> ControlData -> ControlData
-mergeCD = (++)
+mergeTP :: TerminationProc -> TerminationProc -> TerminationProc
+mergeTP = mergeE (>>)
 
 
 ------------------------------------------------------------

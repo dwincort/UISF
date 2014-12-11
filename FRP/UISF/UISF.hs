@@ -17,7 +17,7 @@ module FRP.UISF.UISF (
     uisfSource, uisfSink, uisfPipe,
     uisfSourceE, uisfSinkE, uisfPipeE,
     -- * UISF Getters
-    getTime, getCTX, getEvents, getFocusData, addThreadId, getMousePosition, 
+    getTime, getCTX, getEvents, getFocusData, addTerminationProc, getMousePosition, 
     -- * UISF constructors, transformers, and converters
     -- $ctc
     mkUISF, 
@@ -64,28 +64,28 @@ import Control.Exception
 data UISF b c = UISF 
   { uisfLayout :: Flow -> Layout,
     uisfFun    :: (CTX, Focus, Time, UIEvent, b) -> 
-                  IO (DirtyBit, Focus, Graphic, ControlData, c, UISF b c) }
+                  IO (DirtyBit, Focus, Graphic, TerminationProc, c, UISF b c) }
 
 instance Category UISF where
-  id = UISF (const nullLayout) fun where fun (_,foc,_,_,b) = return (False, foc, nullGraphic, nullCD, b, id)
+  id = UISF (const nullLayout) fun where fun (_,foc,_,_,b) = return (False, foc, nullGraphic, nullTP, b, id)
   UISF gl g . UISF fl f = UISF layout fun where
     layout flow = mergeLayout flow (fl flow) (gl flow)
     fun (ctx, foc, t, e, b) = 
       let (fctx, gctx) = divideCTX ctx (fl $ flow ctx) (layout $ flow ctx)
           -- TODO: maybe divideCTX should take fl and gl; also, it should take the Flow -> Layout functions
-      in do (fdb, foc',  fg, fcd, c, uisff') <- f (fctx, foc,  t, e, b)
-            (gdb, foc'', gg, gcd, d, uisfg') <- g (gctx, foc', t, e, c)
+      in do (fdb, foc',  fg, ftp, c, uisff') <- f (fctx, foc,  t, e, b)
+            (gdb, foc'', gg, gtp, d, uisfg') <- g (gctx, foc', t, e, c)
             let graphic    = mergeGraphics ctx (fg, (fl $ flow ctx) ) (gg, (gl $ flow ctx) )
-                cd         = mergeCD fcd gcd
+                tp         = mergeTP ftp gtp
                 dirtybit   = ((||) $! fdb) $! gdb
-            return (dirtybit, foc'', graphic, cd, d, uisfg' . uisff')
+            return (dirtybit, foc'', graphic, tp, d, uisfg' . uisff')
 
 instance Arrow UISF where
-  arr f = UISF (const nullLayout) fun where fun (_,foc,_,_,b) = return (False, foc, nullGraphic, nullCD, f b, arr f)
+  arr f = UISF (const nullLayout) fun where fun (_,foc,_,_,b) = return (False, foc, nullGraphic, nullTP, f b, arr f)
   first (UISF fl f) = UISF fl fun where
     fun (ctx, foc, t, e, (b, d)) = do
-      (db, foc', g, cd, c, uisff') <- f (ctx, foc, t, e, b)
-      return (db, foc', g, cd, (c,d), first uisff')
+      (db, foc', g, tp, c, uisff') <- f (ctx, foc, t, e, b)
+      return (db, foc', g, tp, (c,d), first uisff')
   -- TODO: custom defs for &&& and *** may improve performance, but they'll end up 
   -- looking like the ugly compose definition above.  Maybe I can find a way to 
   -- abstract the behavior out so that it's all in one place.
@@ -93,37 +93,37 @@ instance Arrow UISF where
 instance ArrowLoop UISF where
   loop (UISF fl f) = UISF fl fun where
     fun (ctx, foc, t, e, b) = do
-      rec (db, foc', g, cd, (c,d), uisff') <- f (ctx, foc, t, e, (b,d))
-      return (db, foc', g, cd, c, loop uisff')
+      rec (db, foc', g, tp, (c,d), uisff') <- f (ctx, foc, t, e, (b,d))
+      return (db, foc', g, tp, c, loop uisff')
 
 instance ArrowChoice UISF where
   left uisf = left' True uisf where
     left' lastLeft ~(UISF fl f) = UISF fl fun where
       fun (ctx, foc, t, e, x) = case x of
-            Left b  -> do (db, foc', g, cd, c, uisff') <- f (ctx, foc, t, e, b)
-                          return (db || lastLeft, foc', g, cd, Left c, left' True uisff')
-            Right d -> return (lastLeft, foc, nullGraphic, nullCD, Right d, left' False $ UISF (const nullLayout) f)
+            Left b  -> do (db, foc', g, tp, c, uisff') <- f (ctx, foc, t, e, b)
+                          return (db || lastLeft, foc', g, tp, Left c, left' True uisff')
+            Right d -> return (lastLeft, foc, nullGraphic, nullTP, Right d, left' False $ UISF (const nullLayout) f)
   uisff ||| uisfg = choice' True (uisfLayout uisff) uisff uisfg where
     choice' lastLeft layout uisff uisfg = UISF layout fun where
       fun (ctx, foc, t, e, x) = case x of
-            Left b  -> do (db, foc', g, cd, d, uisff') <- uisfFun uisff (ctx, foc, t, e, b)
-                          return (db || lastLeft, foc', g, cd, d, choice' True (uisfLayout uisff') uisff' uisfg)
-            Right c -> do (db, foc', g, cd, d, uisfg') <- uisfFun uisfg (ctx, foc, t, e, c)
-                          return (db || not lastLeft, foc', g, cd, d, choice' False (uisfLayout uisfg') uisff uisfg')
+            Left b  -> do (db, foc', g, tp, d, uisff') <- uisfFun uisff (ctx, foc, t, e, b)
+                          return (db || lastLeft, foc', g, tp, d, choice' True (uisfLayout uisff') uisff' uisfg)
+            Right c -> do (db, foc', g, tp, d, uisfg') <- uisfFun uisfg (ctx, foc, t, e, c)
+                          return (db || not lastLeft, foc', g, tp, d, choice' False (uisfLayout uisfg') uisff uisfg')
 
 
 instance ArrowCircuit UISF where
     delay i = UISF (const nullLayout) (fun i) where 
-      fun i (_,foc,_,_,b) = seq i $ return (False, foc, nullGraphic, nullCD, i, UISF (const nullLayout) (fun b))
+      fun i (_,foc,_,_,b) = seq i $ return (False, foc, nullGraphic, nullTP, i, UISF (const nullLayout) (fun b))
 
 instance ArrowIO UISF where
   liftAIO f = UISF (const nullLayout) fun where 
-    fun (_,foc,_,_,b) = f b >>= (\c -> return (False, foc, nullGraphic, nullCD, c, liftAIO f))
+    fun (_,foc,_,_,b) = f b >>= (\c -> return (False, foc, nullGraphic, nullTP, c, liftAIO f))
   initialAIO iod f = UISF (const nullLayout) fun where
     fun inps = do
       d <- iod
-      (db, foc', g, cd, c, uisff') <- uisfFun (f d) inps
-      return (db, foc', g, cd, c, uisff')
+      (db, foc', g, tp, c, uisff') <- uisfFun (f d) inps
+      return (db, foc', g, tp, c, uisff')
 
 instance ArrowTime UISF where
   time = getTime
@@ -164,23 +164,25 @@ uisfPipeE = evMap . uisfPipe
 
 -- | Get the time signal from a UISF
 getTime      :: UISF () Time
-getTime      = mkUISF nullLayout (\(_,f,t,_,_) -> (False, f, nullGraphic, nullCD, t))
+getTime      = mkUISF nullLayout (\(_,f,t,_,_) -> (False, f, nullGraphic, nullTP, t))
 
 -- | Get the context signal from a UISF
 getCTX       :: UISF () CTX
-getCTX       = mkUISF nullLayout (\(c,f,_,_,_) -> (False, f, nullGraphic, nullCD, c))
+getCTX       = mkUISF nullLayout (\(c,f,_,_,_) -> (False, f, nullGraphic, nullTP, c))
 
 -- | Get the UIEvent signal from a UISF
 getEvents    :: UISF () UIEvent
-getEvents    = mkUISF nullLayout (\(_,f,_,e,_) -> (False, f, nullGraphic, nullCD, e))
+getEvents    = mkUISF nullLayout (\(_,f,_,e,_) -> (False, f, nullGraphic, nullTP, e))
 
 -- | Get the focus data from a UISF
 getFocusData :: UISF () Focus
-getFocusData = mkUISF nullLayout (\(_,f,_,_,_) -> (False, f, nullGraphic, nullCD, f))
+getFocusData = mkUISF nullLayout (\(_,f,_,_,_) -> (False, f, nullGraphic, nullTP, f))
 
 -- | A thread handler for UISF.
-addThreadId :: ThreadId -> UISF a a
-addThreadId t = mkUISF nullLayout (\(_,f,_,_,b) -> (False, f, nullGraphic, [t], b))
+addTerminationProc :: IO () -> UISF a a
+addTerminationProc p = UISF (const nullLayout) fun where
+  fun  (_,f,_,_,b) = return (False, f, nullGraphic, Just p,  b, UISF (const nullLayout) fun2)
+  fun2 (_,f,_,_,b) = return (False, f, nullGraphic, Nothing, b, UISF (const nullLayout) fun2)
 
 -- | Get the mouse position from a UISF
 getMousePosition :: UISF () Point
@@ -193,9 +195,9 @@ getMousePosition = proc _ -> do
   returnA -< p
 
 -- | This function creates a UISF with the given parameters.
-mkUISF :: Layout -> ((CTX, Focus, Time, UIEvent, a) -> (DirtyBit, Focus, Graphic, ControlData, b)) -> UISF a b
+mkUISF :: Layout -> ((CTX, Focus, Time, UIEvent, a) -> (DirtyBit, Focus, Graphic, TerminationProc, b)) -> UISF a b
 mkUISF l f = UISF (const l) fun where
-  fun inps = let (db, foc, g, cd, b) = f inps in return (db, foc, g, cd, b, mkUISF l f)
+  fun inps = let (db, foc, g, tp, b) = f inps in return (db, foc, g, tp, b, mkUISF l f)
 
 
 ------------------------------------------------------------
@@ -221,12 +223,12 @@ mkUISF l f = UISF (const l) fun where
 asyncUISFV :: NFData b => Double -> Double -> Automaton (->) a b -> UISF a [(b, Time)]
 asyncUISFV clockrate buffer sf = proc a -> do
   t <- time -< ()
-  asyncV clockrate buffer addThreadId sf -< (a, t)
+  asyncV clockrate buffer (addTerminationProc . killThread) sf -< (a, t)
 
 
 -- | We can also lift a signal function to a UISF asynchronously.
 asyncUISFE :: NFData b => Automaton (->) a b -> UISF (SEvent a) (SEvent b)
-asyncUISFE = asyncE addThreadId
+asyncUISFE = asyncE (addTerminationProc . killThread)
 
 
 ------------------------------------------------------------
@@ -247,15 +249,15 @@ unconjoin = modifyCTX (\ctx -> ctx {isConjoined = False})
 modifyFlow :: Flow -> UISF a b -> UISF a b
 modifyFlow newFlow (UISF l f) = UISF (const $ l newFlow) h where
   h (ctx, foc, t, e, b) = do
-    (db, foc', g, cd, c, uisf) <- f (ctx {flow = newFlow}, foc, t, e, b)
-    return (db, foc', g, cd, c, modifyFlow newFlow uisf)
+    (db, foc', g, tp, c, uisf) <- f (ctx {flow = newFlow}, foc, t, e, b)
+    return (db, foc', g, tp, c, modifyFlow newFlow uisf)
   
 
 modifyCTX  :: (CTX -> CTX) -> UISF a b -> UISF a b
 modifyCTX mod (UISF l f) = UISF l h where
   h (ctx, foc, t, e, b) = do
-    (db, foc', g, cd, c, uisf) <- f (mod ctx, foc, t, e, b)
-    return (db, foc', g, cd, c, modifyCTX mod uisf)
+    (db, foc', g, tp, c, uisf) <- f (mod ctx, foc, t, e, b)
+    return (db, foc', g, tp, c, modifyCTX mod uisf)
 
 
 -- | Set a new layout for this widget.
@@ -272,8 +274,8 @@ pad  :: (Int, Int, Int, Int) -> UISF a b -> UISF a b
 pad args@(w,n,e,s) (UISF fl f) = UISF layout h where
   layout ctx = let l = fl ctx in l { hFixed = hFixed l + w + e, vFixed = vFixed l + n + s }
   h (ctx, foc, t, e, b) = let ((x,y),(bw,bh)) = bounds ctx in do
-    (db, foc', g, cd, c, uisf) <- f (ctx {bounds = ((x + w, y + n),(bw,bh))}, foc, t, e, b)
-    return (db, foc', g, cd, c, pad args uisf)
+    (db, foc', g, tp, c, uisf) <- f (ctx {bounds = ((x + w, y + n),(bw,bh))}, foc, t, e, b)
+    return (db, foc', g, tp, c, pad args uisf)
 
 
 ------------------------------------------------------------
@@ -323,17 +325,20 @@ runUI' = runUI defaultUIParams
 -- | Run the UISF with the given parameters.
 runUI  :: UIParams -> UISF () () -> IO ()
 runUI p sf = do
-    tidref <- newIORef []
+    tref <- newIORef Nothing
     uiInitialize p
     w <- openWindowEx (uiTitle p) (Just (0,0)) (Just $ uiSize p) drawBufferedGraphic
-    finally (go tidref w) (terminate tidref w)
+    finally (go tref w) (terminate tref w)
   where
-    terminate tidref w = do
+    terminate tref w = do
       closeWindow w
-      tids <- readIORef tidref
-      mapM_ killThread tids
+      tproc <- readIORef tref
+      case tproc of
+        Nothing -> return ()
+        Just t -> t
+      --mapM_ killThread tids
       uiClose p
-    go tidref w = runGraphics $ do
+    go tref w = runGraphics $ do
       (events, addEv) <- makeStream
       let pollEvents = windowUser (uiTickDelay p) w addEv
       -- poll events before we start to make sure event queue isn't empty
@@ -345,12 +350,12 @@ runUI p sf = do
             t <- timeGetTime
             let rt = t - t0
             let ctx = defaultCTX (uiInitFlow p) wSize
-            (dirty, foc, graphic, tids', _, uisf') <- uisfFun uisf (ctx, lastFocus, rt, inp, ())
+            (dirty, foc, graphic, tproc', _, uisf') <- uisfFun uisf (ctx, lastFocus, rt, inp, ())
             -- delay graphical output when event queue is not empty
             setGraphic' w graphic
             let drawit = dirty || drawit'
                 foc' = resetFocus foc
-            atomicModifyIORef' tidref (\tids -> (tids'++tids, ()))
+            atomicModifyIORef' tref (\tproc -> (mergeTP tproc' tproc, ()))
             foc' `seq` case inp of
               -- Timer only comes in when we are done processing user events
               NoUIEvent -> do 
