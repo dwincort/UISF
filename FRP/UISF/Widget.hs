@@ -144,8 +144,7 @@ textbox = focusable $
 --   textbox when an event occurs.
 textboxE :: String -> UISF (SEvent String) String
 textboxE startingVal = proc ms -> do
-  rec s' <- delay startingVal -< ts
-      let s = maybe s' id ms
+  rec s  <- delay startingVal -< ts
       ts <- textbox -< maybe s id ms
   returnA -< ts
 
@@ -405,7 +404,7 @@ iSlider hori step (min, max) = mkSlider hori v2p p2v jump
 -- | The realtimeGraph widget creates a graph of the data with trailing values.  
 -- It takes a dimension parameter, the length of the history of the graph 
 -- measured in time, and a color for the graphed line.
--- The signal function then takes an input stream of time as well as 
+-- The signal function then takes an input stream of 
 -- (value,time) event pairs, but since there can be zero or more points 
 -- at once, we use [] rather than 'SEvent' for the type.
 -- The values in the (value,time) event pairs should be between -1 and 1.

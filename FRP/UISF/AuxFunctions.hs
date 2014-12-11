@@ -22,13 +22,13 @@ module FRP.UISF.AuxFunctions (
     accum, unique, 
     hold, now, 
     mergeE, (~++), 
-    concatA, foldA, foldSF, 
+    concatA, runDynamic, foldA, foldSF, 
     maybeA, evMap, 
     -- * Delays and Timers
     delay, 
     -- | delay is a unit delay.  It is exactly the delay from ArrowCircuit.
     vdelay, fdelay, 
-    vdelayC, fdelayC, 
+    vcdelay, fcdelay, 
     timer, genEvents, 
     -- * Event buffer
     Tempo, BufferOperation(..), eventBuffer, 
@@ -42,8 +42,7 @@ module FRP.UISF.AuxFunctions (
     Automaton(..), 
     -- *** Conversions
     -- $conversions2
-    toRealTimeArrow, 
-    async, AsyncInput(..), AsyncOutput(..)
+    asyncC, asyncV, asyncE, asyncC'
 ) where
 
 import Prelude hiding ((.), id)
@@ -170,15 +169,20 @@ foldA merge i sf = h where
         d <- h  -< bs
         returnA -< merge c d
 
+runDynamic :: ArrowChoice a => a b c -> a [b] [c]
+runDynamic = foldA (:) []
+
 -- | For folding results of a list of signal functions
 foldSF :: Arrow a => (b -> c -> c) -> c -> [a () b] -> a () c
-foldSF f b sfs =
-  foldr g (constA b) sfs where
-    g sfa sfb =
-      proc () -> do
-        s1  <- sfa -< ()
-        s2  <- sfb -< ()
-        returnA -< f s1 s2
+foldSF f c sfs = let inps = replicate (length sfs) () in
+    constA inps >>> concatA sfs >>> arr (foldr f c)
+--foldSF f b sfs =
+--  foldr g (constA b) sfs where
+--    g sfa sfb =
+--      proc () -> do
+--        s1  <- sfa -< ()
+--        s2  <- sfb -< ()
+--        returnA -< f s1 s2
 
 maybeA :: ArrowChoice a => a () c -> a b c -> a (Maybe b) c
 maybeA nothing just = proc eb -> do
@@ -230,13 +234,13 @@ vdelay = proc (d, e) -> do
                 (t0,e0) :< qs -> if t-d >= t0 then (Just e0, qs) else (Nothing, q)
     returnA -< ret
 
--- | fdelayC is a continuous version of fdelay.  It takes an initial value 
+-- | fcdelay is a continuous version of fdelay.  It takes an initial value 
 --   to emit for the first dt seconds.  After that, the delay will always 
 --   be accurate, but some data may be ommitted entirely.  As such, it is 
---   not advisable to use fdelayC for event streams where every event must 
+--   not advisable to use fcdelay for event streams where every event must 
 --   be processed (that's what fdelay is for).
-fdelayC :: (ArrowTime a, ArrowCircuit a) => b -> DeltaT -> a b b
-fdelayC i dt = proc v -> do
+fcdelay :: (ArrowTime a, ArrowCircuit a) => b -> DeltaT -> a b b
+fcdelay i dt = proc v -> do
     t <- time -< ()
     rec q <- delay empty -< q' |> (t+dt, v) -- this list has pairs of (emission time, value)
         let (ready, rest) = Seq.spanl ((<= t) . fst) q
@@ -245,12 +249,12 @@ fdelayC i dt = proc v -> do
                 _ :> (t', v') -> (v', (t',v') <| rest)
     returnA -< ret
 
--- | vdelayC is a continuous version of vdelay.  It will always emit the 
+-- | vcdelay is a continuous version of vdelay.  It will always emit the 
 --   value that was produced dt seconds earlier (erring on the side of an 
 --   older value if necessary).  Be warned that this version of delay can 
 --   both omit some data entirely and emit the same data multiple times.  
 --   As such, it is usually inappropriate for events (use vdelay).
---   vdelayC takes a 'maxDT' argument that stands for the maximum delay 
+--   vcdelay takes a 'maxDT' argument that stands for the maximum delay 
 --   time that it can handle.  This is to prevent a space leak.
 --   
 --   Implementation note: Rather than keep a single buffer, we keep two 
@@ -260,8 +264,8 @@ fdelayC i dt = proc v -> do
 --   delay amount variably changes, values are moved back and forth between 
 --   these two sequences as necessary.
 --   This should provide a slight performance boost.
-vdelayC :: (ArrowTime a, ArrowCircuit a) => DeltaT -> b -> a (DeltaT, b) b
-vdelayC maxDT i = proc (dt, v) -> do
+vcdelay :: (ArrowTime a, ArrowCircuit a) => DeltaT -> b -> a (DeltaT, b) b
+vcdelay maxDT i = proc (dt, v) -> do
     t <- time -< ()
     rec (qlow, qhigh) <- delay (empty,empty) -< 
                 (dropMostWhileL ((< t-maxDT) . fst) qlow', qhigh' |> (t, v))
@@ -456,13 +460,13 @@ snapshot_ = flip $ fmap . const -- same as ->>
 --   Note also that the caller can check the time stamp on the element 
 --   at the end of the list to see if the inner, \"simulated\" signal 
 --   function is performing as fast as it should.
-toRealTimeArrow :: (ArrowIO a, NFData c) => 
-                   Double             -- ^ Clockrate
-                -> DeltaT             -- ^ Amount of time to buffer
-                -> (ThreadId -> a () ()) -- ^ The thread handler
-                -> (Automaton (->) b c)      -- ^ The automaton to convert to realtime
-                -> a (b, Time) [(c, Time)]
-toRealTimeArrow clockrate buffer threadHandler sf = initialAIO iod darr where
+asyncV :: (ArrowIO a, NFData c) => 
+          Double             -- ^ Clockrate
+       -> DeltaT             -- ^ Amount of time to buffer
+       -> (ThreadId -> a () ()) -- ^ The thread handler
+       -> (Automaton (->) b c)      -- ^ The automaton to convert to realtime
+       -> a (b, Time) [(c, Time)]
+asyncV clockrate buffer threadHandler sf = initialAIO iod darr where
   iod = do
     inp <- newEmptyMVar
     out <- newIORef empty
@@ -477,19 +481,16 @@ toRealTimeArrow clockrate buffer threadHandler sf = initialAIO iod darr where
     returnA -< toList c
   -- worker processes the inner, "simulated" signal function.
   worker inp out timevar t count (Automaton sf) = do
-      b <- readMVar inp     -- get the latest input
-      let (c, sf') = sf b   -- do the calculation
-      s <- deepseq c $ atomicModifyIORef out (\s -> (s |> (c, fromIntegral count/clockrate), s))
-      t' <- if Seq.length s > 0 && snd (seqLastElem s) >= t+buffer then takeMVar timevar else return t
-      worker inp out timevar t' (count+1) sf'
+    b <- readMVar inp     -- get the latest input
+    let (c, sf') = sf b   -- do the calculation
+    s <- deepseq c $ atomicModifyIORef out (\s -> (s |> (c, fromIntegral count/clockrate), s))
+    t' <- if Seq.length s > 0 && snd (seqLastElem s) >= t+buffer then takeMVar timevar else return t
+    worker inp out timevar t' (count+1) sf'
   seqLastElem s = Seq.index s (Seq.length s - 1)
 
 
 
-data AsyncInput a = AINoValue | AIClearBuffer | AIValue a
-data AsyncOutput b = AONoValue | AOCalculating Int | AOValue b
-
--- | The async function takes a pure signal function (an Automaton) and converts 
+-- | The asyncE function takes a pure signal function (an Automaton) and converts 
 --   it into an asynchronous signal function usable in a MonadIO signal 
 --   function context.  The output MSF takes events of type a, feeds them to 
 --   the asynchronously running input SF, and returns events with the output 
@@ -499,11 +500,11 @@ data AsyncOutput b = AONoValue | AOCalculating Int | AOValue b
 --   nothing, and the output stream is either a result value, a AOCalculating 
 --   indicating that the asynchronous function is calculating and giving the 
 --   buffer size, or nothing.
-async :: (ArrowIO a, ArrowLoop a, ArrowCircuit a, ArrowChoice a, NFData c) => 
-         (ThreadId -> a () ()) -- ^ The thread handler
-      -> (Automaton (->) b c)  -- ^ The automaton to convert to asynchronize
-      -> a (AsyncInput b) (AsyncOutput c)
-async threadHandler sf = {- delay AINoValue >>> -} initialAIO iod darr where
+asyncE :: (ArrowIO a, ArrowLoop a, ArrowCircuit a, ArrowChoice a, NFData c) => 
+          (ThreadId -> a () ()) -- ^ The thread handler
+       -> (Automaton (->) b c)  -- ^ The automaton to convert to asynchronize
+       -> a (SEvent b) (SEvent c)
+asyncE threadHandler sf = {- delay AINoValue >>> -} initialAIO iod darr where
   iod = do
     inp <- newIORef empty
     out <- newIORef empty
@@ -511,31 +512,79 @@ async threadHandler sf = {- delay AINoValue >>> -} initialAIO iod darr where
     tid <- forkIO $ worker proceed inp out sf
     return (tid, proceed, inp, out)
   -- count should start at 0
-  darr (tid, proceed, inp, out) = proc ai -> do
-    rec count <- delay 0 -< count''
-        count' <- case ai of
-          AIValue a -> do
-            _ <- liftAIO (\a -> atomicModifyIORef inp (\is -> (is |> a, ())) >> tryPutMVar proceed ()) -< a
-            returnA -< count+1
-          AIClearBuffer -> do
-            _ <- liftAIO (const $ atomicModifyIORef inp (\_ -> (empty, ())) >> tryTakeMVar proceed) -< ()
-            returnA -< 0
-          AINoValue -> returnA -< count
-        b <- liftAIO (const $ atomicModifyIORef out seqRestHead) -< ()
-        let (b', count'') = maybe (Nothing, count') (\x -> (Just x, count'-1)) b
-            b'' = maybe (if count'' <= 0 then AONoValue else AOCalculating count'') AOValue b'
-    returnA -< b''
+  darr (tid, proceed, inp, out) = proc eb -> do
+    _ <- threadHandler tid -< ()
+    case eb of
+      Just b -> 
+        liftAIO (\b -> atomicModifyIORef inp (\s -> (s |> b, ())) >> tryPutMVar proceed ()) -< b
+      Nothing -> returnA -< False
+    c <- liftAIO (const $ atomicModifyIORef out seqRestHead) -< ()
+    returnA -< c
   -- worker processes the inner, "simulated" signal function.
   -- worker :: MVar () -> IORef (Seq a) -> IORef (Seq b) -> Automaton a b -> IO ()
   worker proceed inp out (Automaton sf) = do
-      ea <- atomicModifyIORef inp seqRestHead
-      case ea of
-        Nothing -> takeMVar proceed >> worker proceed inp out (Automaton sf)
-        Just a -> do
-          let (b, sf') = sf a     -- do the calculation
-          deepseq b $ atomicModifyIORef out (\s -> (s |> b, ()))
-          worker proceed inp out sf'
+    eb <- atomicModifyIORef inp seqRestHead
+    case eb of
+      Nothing -> takeMVar proceed >> worker proceed inp out (Automaton sf)
+      Just b -> do
+        let (c, sf') = sf b     -- do the calculation
+        deepseq c $ atomicModifyIORef out (\s -> (s |> c, ()))
+        worker proceed inp out sf'
   seqRestHead s = case viewl s of
       EmptyL  -> (s,  Nothing)
       a :< s' -> (s', Just a)
+
+-- asyncC is the continuous one
+--asyncC :: (ArrowIO a, NFData c) => 
+--          (ThreadId -> a () ()) -- ^ The thread handler
+--       -> (Automaton (->) b c)      -- ^ The automaton to convert to realtime
+--       -> a b [c]
+--asyncC threadHandler sf = initialAIO iod darr where
+--  iod = do
+--    inp <- newEmptyMVar
+--    out <- newIORef empty
+--    tid <- forkIO $ worker inp out sf
+--    return (tid, inp, out)
+--  darr (tid, inp, out) = proc b -> do
+--    _ <- threadHandler tid -< ()
+--    _ <- liftAIO (\b -> tryTakeMVar inp >> putMVar inp b) -< b -- send the worker the new input
+--    c <- liftAIO (\_ -> atomicModifyIORef out (\s -> (empty,s))) -< () --collect ready results
+--    returnA -< toList c
+--  -- worker processes the inner, "simulated" signal function.
+--  worker inp out (Automaton sf) = do
+--    b <- readMVar inp     -- get the latest input
+--    let (c, sf') = sf b   -- do the calculation
+--    deepseq c $ atomicModifyIORef out (\s -> (s |> c, ()))
+--    worker inp out sf'
+
+
+
+asyncC th sf = asyncC' th (const . return $ (), return) (first sf)
+
+-- A version of async that does actions on either end of the automaton
+asyncC' :: (ArrowIO a, ArrowLoop a, ArrowCircuit a, ArrowChoice a, NFData b, NFData c) => 
+           (ThreadId -> a () ()) -- ^ The thread handler
+        -> (b -> IO d, e -> IO ()) -- ^ Effectful input and output channels for the automaton
+        -> (Automaton (->) (b,d) (c,e))  -- ^ The automaton to convert to asynchronize
+        -> a b [c]
+asyncC' threadHandler (iAction, oAction) sf = initialAIO iod darr where
+  iod = do
+    inp <- newIORef undefined
+    start <- newEmptyMVar
+    out <- newIORef empty
+    tid <- forkIO $ takeMVar start >> worker inp out sf
+    return (tid, inp, out, start)
+  darr (tid, inp, out, start) = proc b -> do
+    _ <- threadHandler tid -< ()
+    _ <- liftAIO $ (\b -> deepseq b $ writeIORef inp b) -< b -- send the worker the new input
+    c <- initialAIO (putMVar start ()) (const $ liftAIO (\_ -> atomicModifyIORef' out (\s -> (empty,s)))) -< () --collect ready results
+    returnA -< toList c
+  -- worker processes the inner, "simulated" signal function.
+  worker inp out (Automaton sf) = do
+    b <- readIORef inp     -- get the latest input
+    d <- iAction b
+    let ((c,e), sf') = sf (b,d)   -- do the calculation
+    deepseq c $ oAction e
+    atomicModifyIORef' out (\s -> (s |> c, ()))
+    worker inp out sf'
 

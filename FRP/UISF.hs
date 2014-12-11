@@ -5,10 +5,8 @@ module FRP.UISF
   , defaultUIParams     -- :: UIParams
   , runUI'              -- :: UISF () () -> IO ()
   , runUI               -- :: UIParams -> UISF () () -> IO ()
-  , convertToUISF       -- :: NFData b => Double -> Double -> SF a b -> UISF a ([b], Bool)
-  , asyncUISF           -- :: NFData b => Automaton a b -> UISF (ASyncInput a) (ASyncOutput b)
-  , AsyncInput (..)     -- data AsyncInput a = AINoValue | AIClearBuffer | AIValue a
-  , AsyncOutput (..)    -- data AsyncOutput b = AONoValue | AOCalculating Int | AOValue b
+  , asyncUISFV          -- :: NFData b => Double -> Double -> Automaton a b -> UISF a ([b], Bool)
+  , asyncUISFE          -- :: NFData b => Automaton a b -> UISF (SEvent a) (SEvent b)
   , Dimension           -- type Dimension = (Int, Int)
   , topDown, bottomUp, leftRight, rightLeft    -- :: UISF a b -> UISF a b
   , setSize             -- :: Dimension -> UISF a b -> UISF a b
@@ -30,7 +28,7 @@ module FRP.UISF
   , radio               -- :: [String] -> Int -> UISF () Int
   , hSlider, vSlider    -- :: RealFrac a => (a, a) -> a -> UISF () a
   , hiSlider, viSlider  -- :: Integral a => a -> (a, a) -> a -> UISF () a
-  , realtimeGraph       -- :: RealFrac a => Layout -> Time -> Color -> UISF (Time, [(a,Time)]) ()
+  , realtimeGraph       -- :: RealFrac a => Layout -> Time -> Color -> UISF [(a,Time)] ()
   , histogram           -- :: RealFrac a => Layout -> UISF (Event [a]) ()
   , histogramWithScale  -- :: RealFrac a => Layout -> UISF (SEvent [(a,String)]) ()
   , listbox             -- :: (Eq a, Show a) => UISF ([a], Int) Int

@@ -15,6 +15,8 @@
 
 -- make sure to use "ghc --make -main-is FRP.UISF.Examples.Pinochle -O2 pinochle.hs" for best performance
 
+-- TODO: Perhaps make the "calculate meld" button disabled when it is mid-calculation
+
 {-# LANGUAGE Arrows, BangPatterns #-}
 module FRP.UISF.Examples.Pinochle where
 import FRP.UISF hiding (accum)
@@ -124,24 +126,20 @@ pinochleSF = proc _ -> do
             _ -> Nothing
     restr <- checkbox "Restrict trump suit?" False -< ()
     b <- edge <<< button "Calculate meld from kitty" -< ()
-    kre <- (asyncUISF $ arr $ uncurry $ uncurry kittyResult) -< toAsyncInput $
+    kre <- (asyncUISFE $ arr $ uncurry $ uncurry kittyResult) -< 
             fmap (const ((hand, kittenSizeStr), if restr then Just trump else Nothing)) b
-    k <- hold [] -< case (clearEv, kre) of
-        (Just _, _) -> Just []
-        (Nothing, AOValue (r,_)) -> Just r
-        (Nothing, AOCalculating _) -> Just ["Calculating ..."]
+    k <- hold [] -< case (clearEv, kre, b) of
+        (Just _, _, _) -> Just []
+        (Nothing, Just (r,_), _) -> Just r
+        (Nothing, _, Just _) -> Just ["Calculating ..."]
         _ -> Nothing
     displayStrList -< k
-    histogramWithScale (makeLayout (Stretchy 10) (Fixed 150)) -< case (clearEv, kre) of
-        (Just _, _) -> Just []
-        (_, AOValue (_,m)) -> Just $ prepHistogramData m
-        (_, AOCalculating _) -> Just []
+    histogramWithScale (makeLayout (Stretchy 10) (Fixed 150)) -< case (clearEv, kre, b) of
+        (Just _, _, _) -> Just []
+        (_, Just (_,m), _) -> Just $ prepHistogramData m
+        (_, _, Just _) -> Just []
         _ -> Nothing
     returnA -< ()
-
-toAsyncInput :: SEvent a -> AsyncInput a
-toAsyncInput (Just a) = AIValue a
-toAsyncInput Nothing = AINoValue
 
 
 prepHistogramData :: Map.Map Int Int -> [(Double, String)]
