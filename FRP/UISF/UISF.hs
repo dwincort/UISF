@@ -71,8 +71,7 @@ instance Category UISF where
   UISF gl g . UISF fl f = UISF layout fun where
     layout flow = mergeLayout flow (fl flow) (gl flow)
     fun (ctx, foc, t, e, b) = 
-      let (fctx, gctx) = divideCTX ctx (fl $ flow ctx) (layout $ flow ctx)
-          -- TODO: maybe divideCTX should take fl and gl; also, it should take the Flow -> Layout functions
+      let (fctx, gctx) = divideCTX ctx (fl $ flow ctx) (gl $ flow ctx)
       in do (fdb, foc',  fg, ftp, c, uisff') <- f (fctx, foc,  t, e, b)
             (gdb, foc'', gg, gtp, d, uisfg') <- g (gctx, foc', t, e, c)
             let graphic    = mergeGraphics ctx (fg, (fl $ flow ctx) ) (gg, (gl $ flow ctx) )
@@ -262,7 +261,10 @@ modifyCTX mod (UISF l f) = UISF l h where
 
 -- | Set a new layout for this widget.
 setLayout  :: Layout -> UISF a b -> UISF a b
-setLayout l (UISF _ f) = UISF (const l) f
+setLayout l (UISF _ f) = UISF (const l) h where
+  h (ctx, foc, t, e, b) = do
+    (db, foc', g, tp, c, uisf) <- f (ctx, foc, t, e, b)
+    return (db, foc', g, tp, c, setLayout l uisf)
 
 -- | A convenience function for setLayout, setSize sets the layout to a 
 -- fixed size (in pixels).

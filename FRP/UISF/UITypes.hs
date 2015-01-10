@@ -89,7 +89,7 @@ data CTX = CTX
         -- rather than splitting.  This can be useful for making compound 
         -- widgets when one widget takes up space and the other performs 
         -- some side effect having to do with that space.
-  }
+  } deriving Show
 
 -- | Flow determines widget ordering.
 data Flow = TopDown | BottomUp | LeftRight | RightLeft deriving (Eq, Show)
@@ -117,9 +117,9 @@ type Rect = (Point, Dimension)
 makeLayout :: LayoutType ->     -- ^ Horizontal Layout information
               LayoutType ->     -- ^ Vertical Layout information
               Layout
-makeLayout (Fixed h) (Fixed v) = Layout 0 0 h v h v
-makeLayout (Stretchy minW) (Fixed v) = Layout 1 0 0 v minW v
-makeLayout (Fixed h) (Stretchy minH) = Layout 0 1 h 0 h minH
+makeLayout (Fixed h) (Fixed v) = Layout 0 0 h v 0 0
+makeLayout (Stretchy minW) (Fixed v) = Layout 1 0 0 v minW 0
+makeLayout (Fixed h) (Stretchy minH) = Layout 0 1 h 0 0 minH
 makeLayout (Stretchy minW) (Stretchy minH) = Layout 1 1 0 0 minW minH
 
 -- | A dimension can either be:
@@ -145,7 +145,7 @@ nullLayout = Layout 0 0 0 0 0 0
 --    of width and height should be allocated for this widget.
 -- 
 -- 3. minW and minH specify minimum values (in pixels) of width and height 
---    for the widget's dimensions.
+--    for the widget's stretchy dimensions.
 
 data Layout = Layout
   { hFill  :: Int
@@ -165,28 +165,42 @@ data Layout = Layout
 ---------------
 -- divideCTX --
 ---------------
--- | Divides the CTX according to the ratio of a widget's layout and the 
--- overall layout of the widget that receives this CTX.  Therefore, the 
--- first layout argument should basically be a sublayout of the second.
+-- | Divides the CTX among the two given layouts.
 
 divideCTX :: CTX -> Layout -> Layout -> (CTX, CTX)
 divideCTX ctx@(CTX a ((x, y), (w, h)) c) 
-          ~(Layout m n u v minw minh) ~(Layout m' n' u' v' minw' minh') =
+          ~(Layout wFill  hFill  wFixed  hFixed  wMin  hMin) 
+          ~(Layout wFill' hFill' wFixed' hFixed' wMin' hMin') =
   if c then (ctx, ctx) else
   case a of
-    TopDown   -> (CTX a ((x, y), (w'', h')) c, 
-                  CTX a ((x, y + h'), (w, h - h')) c)
-    BottomUp  -> (CTX a ((x, y + h - h'), (w'', h')) c, 
-                  CTX a ((x, y), (w, h - h')) c)
-    LeftRight -> (CTX a ((x, y), (w', h'')) c, 
-                  CTX a ((x + w', y), (w - w', h)) c)
-    RightLeft -> (CTX a ((x + w - w', y), (w', h'')) c, 
-                  CTX a ((x, y), (w - w', h)) c)
+    TopDown   -> (CTX a ((x, y),                 (w1T, h1T)) c, 
+                  CTX a ((x, y + h1T),           (w2T, h2T)) c)
+    BottomUp  -> (CTX a ((x, y + h - h1T),       (w1T, h1T)) c, 
+                  CTX a ((x, y + h - h1T - h2T), (w2T, h2T)) c)
+    LeftRight -> (CTX a ((x, y),                 (w1L, h1L)) c, 
+                  CTX a ((x + w1L, y),           (w2L, h2L)) c)
+    RightLeft -> (CTX a ((x + w - w1L, y),       (w1L, h1L)) c, 
+                  CTX a ((x + w - w1L - w2L, y), (w2L, h2L)) c)
   where
-    w' = max minw (m * div' (w - u') m' + u)
-    h' = max minh (n * div' (h - v') n' + v)
-    w'' = max minw (if m == 0 then u else w)
-    h'' = max minh (if n == 0 then v else h)
+    -- The commented out code here forces the contexts to match exactly 
+    -- what the layout requests.  The code in place matches to the first 
+    -- layout and then gives the rest of the context to the second.
+    -- A more robust design may require a special "filler" layout that 
+    -- is not stretchy but will accept any leftover pixels.  We could 
+    -- then have a filler widget that is essentially (arr id) with this 
+    -- special layout.
+    wportion fill = div' (fill * (w - wFixed - wFixed')) (wFill + wFill')
+    (w1L,w2L) = let w1 = wFixed  + max wMin  (wportion wFill)
+                    w2 = wFixed' + max wMin' (wportion wFill')
+                in (w1, w-w1) --if w1+w2 > w then (w1, w-w1) else (w1, w2)
+    h1L = h --max hMin  (if hFill  == 0 then hFixed  else h)
+    h2L = h --max hMin' (if hFill' == 0 then hFixed' else h)
+    hportion fill = div' (fill * (h - hFixed - hFixed')) (hFill + hFill')
+    (h1T,h2T) = let h1 = hFixed  + max hMin  (hportion hFill)
+                    h2 = hFixed' + max hMin' (hportion hFill')
+                in (h1, h-h1) --if h1+h2 > h then (h1, h-h1) else (h1, h2)
+    w1T = w --max wMin  (if wFill  == 0 then wFixed  else w)
+    w2T = w --max wMin' (if wFill' == 0 then wFixed' else w)
     div' b 0 = 0
     div' b d = div b d
 

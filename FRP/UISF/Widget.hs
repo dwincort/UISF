@@ -159,10 +159,10 @@ title str (UISF fl f) = UISF layout h where
     withColor Black (text (x + 10, y) str) 
     // withColor' bg (block ((x + 8, y), (tw + 4, th))) 
     // box marked ((x, y + 8), (w, h - 16))
-  layout ctx = let l = fl ctx in l { hFixed = hFixed l + 8, vFixed = vFixed l + 36, 
-                                     minW = max (tw + 20) (minW l), minH = max 36 (minH l) }
-  h (CTX _ bbx@((x,y), (w,h)) _,foc,t,inp, a) = 
-    let ctx' = CTX TopDown ((x + 4, y + 20), (w - 8, h - 32)) False
+  layout ctx = let l = fl ctx in l { hFixed = hFixed l + tw, vFixed = vFixed l + 36 }
+                                    -- ,minW = max (tw + 20) (minW l), minH = max 36 (minH l) }
+  h (CTX flow bbx@((x,y), (w,h)) cj,foc,t,inp, a) = 
+    let ctx' = CTX flow ((x + 4, y + 20), (w - 8, h - 32)) cj
     in do (db, foc', g, cd, b, uisf) <- f (ctx', foc, t, inp, a)
           return (db, foc', drawit bbx // g, cd, b, title str uisf)
 
@@ -482,7 +482,7 @@ histogramWithScale layout =
 -- The layout is the static layout that this widget will use.  It 
 -- cannot be dependent on any streaming arguments, but a layout can have 
 -- \"stretchy\" sides so that it can expand/shrink to fit an area.  Learn 
--- more about making layouts in 'UIMonad's UI Layout section -- specifically, 
+-- more about making layouts in 'UIType's UI Layout section -- specifically, 
 -- check out the 'makeLayout' function and the 'LayoutType' data type.
 -- 
 -- The computation is where the logic of the widget is held.  This 

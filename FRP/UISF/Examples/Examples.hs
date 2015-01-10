@@ -21,7 +21,7 @@ timeEx = title "Time" $ getTime >>> display
 -- | This example shows off buttons and state by presenting a plus and 
 -- minus button with a counter that is adjusted by them.
 buttonEx :: UISF () ()
-buttonEx = title "Buttons" $ proc _ -> do
+buttonEx = title "Buttons" $ topDown $ proc _ -> do
   (x,y) <- leftRight (proc _ -> do
     x <- edge <<< button "+" -< ()
     y <- edge <<< button "-" -< ()
@@ -34,7 +34,7 @@ buttonEx = title "Buttons" $ proc _ -> do
 
 -- | This example shows off the checkbox widgets.
 checkboxEx :: UISF () ()
-checkboxEx = title "Checkboxes" $ proc _ -> do
+checkboxEx = title "Checkboxes" $ topDown $ proc _ -> do
   x <- checkbox "Monday" False -< ()
   y <- checkbox "Tuesday" True -< ()
   z <- checkbox "Wednesday" True -< ()
@@ -46,13 +46,13 @@ checkboxEx = title "Checkboxes" $ proc _ -> do
 
 -- | This example shows off the radio button widget.
 radioButtonEx :: UISF () ()
-radioButtonEx = title "Radio Buttons" $ radio list 0 >>> arr (list!!) >>> displayStr
+radioButtonEx = title "Radio Buttons" $ topDown $ radio list 0 >>> arr (list!!) >>> displayStr
   where
     list = ["apple", "orange", "banana"]
 
 -- | This example shows off integral sliders (horizontal in the case).
 shoppinglist :: UISF () ()
-shoppinglist = title "Shopping List" $ proc _ -> do
+shoppinglist = title "Shopping List" $ topDown $ proc _ -> do
   a <- title "apples"  $ hiSlider 1 (0,10) 3 -< ()
   b <- title "bananas" $ hiSlider 1 (0,10) 7 -< () 
   title "total" $ display -< (a + b)
@@ -82,7 +82,8 @@ colorDemo = setSize (300, 220) $ title "Color" $ pad (4,0,4,0) $ leftRight $ pro
 -- that text is transferred to the display widget below when the button 
 -- is pressed.
 textboxdemo :: UISF () ()
-textboxdemo = proc _ -> do
+textboxdemo = setLayout (makeLayout (Stretchy 150) (Fixed 100)) $ 
+                title "Saving Text" $ topDown $ proc _ -> do
   str <- leftRight $ label "Text: " >>> textboxE "" -< Nothing
   b <- button "Save text to below" -< ()
   rec str' <- delay "" -< if b then str else str'
@@ -96,6 +97,6 @@ textboxdemo = proc _ -> do
 -- elements, and pressing shift-tab cycles in reverse.
 main :: IO ()
 main = runUI (defaultUIParams {uiSize=(500, 500)}) $ 
-  (leftRight $ (bottomUp $ timeEx >>> buttonEx) >>> checkboxEx >>> radioButtonEx) >>>
-  (leftRight $ shoppinglist >>> colorDemo) >>> textboxdemo
+  (leftRight $ (bottomUp $ timeEx >>> buttonEx) >>> (topDown $ checkboxEx >>> arr id) >>> radioButtonEx) >>>
+  (leftRight $ shoppinglist >>> colorDemo) >>> textboxdemo >>> arr id
 
