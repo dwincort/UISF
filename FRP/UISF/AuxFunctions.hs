@@ -9,7 +9,7 @@
 --
 -- Auxiliary functions for use with UISF or other arrows.
 
-{-# LANGUAGE Arrows, ScopedTypeVariables #-}
+{-# LANGUAGE Arrows, ScopedTypeVariables, TupleSections #-}
 
 module FRP.UISF.AuxFunctions (
     -- * Types
@@ -31,7 +31,7 @@ module FRP.UISF.AuxFunctions (
     vcdelay, fcdelay, 
     timer, genEvents, 
     -- * Event buffer
-    Tempo, BufferOperation(..), eventBuffer, 
+    Tempo, BufferOperation(..), eventBuffer, eventBuffer', 
     
 --    (=>>), (->>), (.|.),
 --    snapshot, snapshot_,
@@ -353,11 +353,13 @@ data BufferOperation b =
 --   streaming Bool is emitted that is True if the buffer is empty and 
 --   False if the buffer is full (meaning that events will still come).
 eventBuffer :: (ArrowTime a, ArrowCircuit a) => a (BufferOperation b) (SEvent [b], Bool)
-eventBuffer = proc bo' -> do
+eventBuffer = arr (,()) >>> second time >>> eventBuffer'
+
+eventBuffer' :: ArrowCircuit a => a (BufferOperation b, Time) (SEvent [b], Bool)
+eventBuffer' = proc (bo', t) -> do
     let (bo, doPlay', tempo') = collapseBO bo'
     doPlay <- hold True -< doPlay'
     tempo <- hold 1 -< tempo'
-    t <- time -< ()
     rec tprev  <- delay 0    -< t   --used to calculate dt, the change in time
         buffer <- delay []   -< buffer''' --the buffer
         let dt = tempo * (t-tprev) --dt will never be negative
@@ -535,34 +537,34 @@ asyncE threadHandler sf = {- delay AINoValue >>> -} initialAIO iod darr where
       a :< s' -> (s', Just a)
 
 -- asyncC is the continuous one
---asyncC :: (ArrowIO a, NFData c) => 
---          (ThreadId -> a () ()) -- ^ The thread handler
---       -> (Automaton (->) b c)      -- ^ The automaton to convert to realtime
---       -> a b [c]
---asyncC threadHandler sf = initialAIO iod darr where
---  iod = do
---    inp <- newEmptyMVar
---    out <- newIORef empty
---    tid <- forkIO $ worker inp out sf
---    return (tid, inp, out)
---  darr (tid, inp, out) = proc b -> do
---    _ <- threadHandler tid -< ()
---    _ <- liftAIO (\b -> tryTakeMVar inp >> putMVar inp b) -< b -- send the worker the new input
---    c <- liftAIO (\_ -> atomicModifyIORef out (\s -> (empty,s))) -< () --collect ready results
---    returnA -< toList c
---  -- worker processes the inner, "simulated" signal function.
---  worker inp out (Automaton sf) = do
---    b <- readMVar inp     -- get the latest input
---    let (c, sf') = sf b   -- do the calculation
---    deepseq c $ atomicModifyIORef out (\s -> (s |> c, ()))
---    worker inp out sf'
+asyncC :: (ArrowIO a, NFData c) => 
+          (ThreadId -> a () ()) -- ^ The thread handler
+       -> (Automaton (->) b c)      -- ^ The automaton to convert to realtime
+       -> a b [c]
+--asyncC th sf = asyncC' th (const . return $ (), return) (first sf)
+asyncC threadHandler sf = initialAIO iod darr where
+  iod = do
+    inp <- newEmptyMVar
+    out <- newIORef empty
+    tid <- forkIO $ worker inp out sf
+    return (tid, inp, out)
+  darr (tid, inp, out) = proc b -> do
+    _ <- threadHandler tid -< ()
+    _ <- liftAIO (\b -> tryTakeMVar inp >> putMVar inp b) -< b -- send the worker the new input
+    c <- liftAIO (\_ -> atomicModifyIORef out (\s -> (empty,s))) -< () --collect ready results
+    returnA -< toList c
+  -- worker processes the inner, "simulated" signal function.
+  worker inp out (Automaton sf) = do
+    b <- readMVar inp     -- get the latest input
+    let (c, sf') = sf b   -- do the calculation
+    deepseq c $ atomicModifyIORef out (\s -> (s |> c, ()))
+    worker inp out sf'
 
 
 
-asyncC th sf = asyncC' th (const . return $ (), return) (first sf)
 
 -- A version of async that does actions on either end of the automaton
-asyncC' :: (ArrowIO a, ArrowLoop a, ArrowCircuit a, ArrowChoice a, NFData b, NFData c) => 
+asyncC' :: (ArrowIO a, ArrowLoop a, ArrowCircuit a, ArrowChoice a, NFData b) => 
            (ThreadId -> a () ()) -- ^ The thread handler
         -> (b -> IO d, e -> IO ()) -- ^ Effectful input and output channels for the automaton
         -> (Automaton (->) (b,d) (c,e))  -- ^ The automaton to convert to asynchronize
@@ -584,7 +586,7 @@ asyncC' threadHandler (iAction, oAction) sf = initialAIO iod darr where
     b <- readIORef inp     -- get the latest input
     d <- iAction b
     let ((c,e), sf') = sf (b,d)   -- do the calculation
-    deepseq c $ oAction e
+    oAction e
     atomicModifyIORef' out (\s -> (s |> c, ()))
     worker inp out sf'
 
