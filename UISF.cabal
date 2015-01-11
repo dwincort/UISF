@@ -3,7 +3,7 @@ version:        0.3.0.0
 Cabal-Version:  >= 1.8
 license:        BSD3
 license-file:   License
-copyright:      Copyright (c) 2014 Daniel Winograd-Cort
+copyright:      Copyright (c) 2015 Daniel Winograd-Cort
 category:       GUI
 stability:      experimental
 build-type:     Simple

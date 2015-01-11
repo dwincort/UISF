@@ -12,7 +12,6 @@ import FRP.UISF
 import FRP.UISF.SOE (withColor', rgb, polygon)
 
 import Numeric (showHex)
-import Data.Maybe (listToMaybe, catMaybes)
 
 -- | This example displays the time from the start of the GUI application.
 timeEx :: UISF () ()

@@ -163,7 +163,7 @@ openWindowEx title _position size (RedrawMode _useDoubleBuffer) = do
   let charCallback c Press = do 
         ks <- readIORef keyState
         atomically $ writeTChan eChan Key{ char = c, modifiers = ks, isDown = True}
-      charCallBack c Release = return () -- This never happens
+      charCallback c Release = return () -- This never happens
   let keyCallBack (CharKey c) Press = do
 --        ks <- readIORef keyState
 --        atomically $ writeTChan eChan Key{ char = c, modifiers = ks, isDown = True}

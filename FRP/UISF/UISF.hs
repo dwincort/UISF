@@ -50,7 +50,7 @@ import FRP.UISF.AuxFunctions (Automaton, Time, evMap,
                               asyncE, asyncV)
 
 import Control.Monad (when)
-import qualified Graphics.UI.GLFW as GLFW (sleep, SpecialKey (..))
+import qualified Graphics.UI.GLFW as GLFW (sleep)
 import Control.Concurrent
 import Control.DeepSeq
 import Data.IORef

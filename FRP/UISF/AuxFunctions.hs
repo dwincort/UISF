@@ -50,7 +50,7 @@ import Control.Category
 import Control.Arrow
 import Control.Arrow.Operations
 import Control.Arrow.Transformer.Automaton
-import Data.Sequence (Seq, empty, (<|), (|>), (><), 
+import Data.Sequence (empty, (<|), (|>), (><), 
                       viewl, ViewL(..), viewr, ViewR(..))
 import qualified Data.Sequence as Seq
 import Data.Maybe (listToMaybe)
@@ -427,7 +427,7 @@ snapshot_ = flip $ fmap . const -- same as ->>
 --------------------------------------
 
 -- $conversions
--- Due to the internal monad (specifically, because it could be IO), MSFs are 
+-- Due to the internal IO, ArrowIO arrows are 
 -- not necessarily pure.  Thus, when we run them, we say that they run \"in 
 -- real time\".  This means that the time between two samples can vary and is 
 -- inherently unpredictable.
@@ -435,14 +435,10 @@ snapshot_ = flip $ fmap . const -- same as ->>
 -- However, sometimes we have a pure computation that we would like to run 
 -- on a simulated clock.  This computation will expect to produce values at 
 -- specific intervals, and because it's pure, that expectation can sort of be 
--- satisfied.
+-- satisfied.  For this, we would use asynchV (V for virtual).
 -- 
--- The three functions in this section are three different ways to handle 
--- this case.  toMSF simply lifts the pure computation and \"hopes\" 
--- that the timing works the way you want.  As expected, this is not 
--- recommended.  async lets the pure computation compute in its own thread, 
--- but it puts no restrictions on speed.  toRealTimeMSF takes a signal rate 
--- argument and attempts to mediate between real and virtual time.
+-- The other functions in this section are for other forms of asynchrony.  
+-- There is one for Event-based asynchrony and two for continuous.
 
 
 -- $conversions2
@@ -536,7 +532,7 @@ asyncE threadHandler sf = {- delay AINoValue >>> -} initialAIO iod darr where
       EmptyL  -> (s,  Nothing)
       a :< s' -> (s', Just a)
 
--- asyncC is the continuous one
+-- | asyncC is the continuous async function.
 asyncC :: (ArrowIO a, NFData c) => 
           (ThreadId -> a () ()) -- ^ The thread handler
        -> (Automaton (->) b c)      -- ^ The automaton to convert to realtime
@@ -563,7 +559,7 @@ asyncC threadHandler sf = initialAIO iod darr where
 
 
 
--- A version of async that does actions on either end of the automaton
+-- | A version of asyncC that does actions on either end of the automaton
 asyncC' :: (ArrowIO a, ArrowLoop a, ArrowCircuit a, ArrowChoice a, NFData b) => 
            (ThreadId -> a () ()) -- ^ The thread handler
         -> (b -> IO d, e -> IO ()) -- ^ Effectful input and output channels for the automaton
