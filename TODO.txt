@@ -1,0 +1,4 @@
+UISF future features/changes
+- remove the ArrowTime class and replace it with (ArrowReader Time) or something like that?
+- make the output of asyncC (and asyncC') be monoidal
+- rename the Layout constructors to: wFill  hFill  wFixed  hFixed  wMin  hMin
