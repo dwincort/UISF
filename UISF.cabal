@@ -1,5 +1,5 @@
 name:           UISF
-version:        0.3.0.0
+version:        0.3.0.1
 Cabal-Version:  >= 1.8
 license:        BSD3
 license-file:   License
@@ -9,7 +9,7 @@ stability:      experimental
 build-type:     Simple
 author:         Dan Winograd-Cort <dwc@cs.yale.edu>
 maintainer:     Dan Winograd-Cort <dwc@cs.yale.edu>
-bug-reports:    mailto:dwc@cs.yale.edu
+bug-reports:    https://github.com/dwincort/UISF/issues
 homepage:       http://haskell.cs.yale.edu/
 synopsis:       Library for Arrowized Graphical User Interfaces.
 description:

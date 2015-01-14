@@ -1,18 +1,11 @@
 module FRP.UISF
   ( -- UI functions
     UISF 
-  , UIParams (..)       -- data UIParams = UIParams { ... }
-  , defaultUIParams     -- :: UIParams
   , runUI'              -- :: UISF () () -> IO ()
   , runUI               -- :: UIParams -> UISF () () -> IO ()
-  , asyncUISFV          -- :: NFData b => Double -> Double -> Automaton a b -> UISF a ([b], Bool)
-  , asyncUISFE          -- :: NFData b => Automaton a b -> UISF (SEvent a) (SEvent b)
+  , UIParams (..)       -- data UIParams = UIParams { ... }
+  , defaultUIParams     -- :: UIParams
   , Dimension           -- type Dimension = (Int, Int)
-  , topDown, bottomUp, leftRight, rightLeft    -- :: UISF a b -> UISF a b
-  , setSize             -- :: Dimension -> UISF a b -> UISF a b
-  , setLayout           -- :: Layout -> UISF a b -> UISF a b
-  , pad                 -- :: (Int, Int, Int, Int) -> UISF a b -> UISF a b
-  , getTime             -- :: UISF () Time
     -- Widgets
   , label               -- :: String -> UISF a a
   , displayStr          -- :: UISF String ()
@@ -29,15 +22,22 @@ module FRP.UISF
   , hSlider, vSlider    -- :: RealFrac a => (a, a) -> a -> UISF () a
   , hiSlider, viSlider  -- :: Integral a => a -> (a, a) -> a -> UISF () a
   , realtimeGraph       -- :: RealFrac a => Layout -> Time -> Color -> UISF [(a,Time)] ()
+  , Color (..)          -- data Color = Black | Blue | Green | Cyan | Red | Magenta | Yellow | White
   , histogram           -- :: RealFrac a => Layout -> UISF (Event [a]) ()
   , histogramWithScale  -- :: RealFrac a => Layout -> UISF (SEvent [(a,String)]) ()
   , listbox             -- :: (Eq a, Show a) => UISF ([a], Int) Int
   , canvas              -- :: Dimension -> UISF (Event Graphic) ()
   , canvas'             -- :: Layout -> (a -> Dimension -> Graphic) -> UISF (Event a) ()
   -- Widget Utilities
+  , topDown, bottomUp, leftRight, rightLeft    -- :: UISF a b -> UISF a b
+  , pad                 -- :: (Int, Int, Int, Int) -> UISF a b -> UISF a b
+  , setSize             -- :: Dimension -> UISF a b -> UISF a b
+  , setLayout           -- :: Layout -> UISF a b -> UISF a b
   , makeLayout          -- :: LayoutType -> LayoutType -> Layout
   , LayoutType (..)     -- data LayoutType = Stretchy { minSize :: Int } | Fixed { fixedSize :: Int }
-  , Color (..)          -- data Color = Black | Blue | Green | Cyan | Red | Magenta | Yellow | White
+  , getTime             -- :: UISF () Time
+  , asyncUISFV          -- :: NFData b => Double -> Double -> Automaton a b -> UISF a ([b], Bool)
+  , asyncUISFE          -- :: NFData b => Automaton a b -> UISF (SEvent a) (SEvent b)
   , module FRP.UISF.AuxFunctions
   , module Control.Arrow
   ) where

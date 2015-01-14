@@ -17,7 +17,7 @@ See Liense for licensing information.
 ==== Getting the Source ====
 ============================
 
-Currently (10/26/2013), the most up-to-date version of UISF is 
+Currently (1/14/2015), the most up-to-date version of UISF is 
 available through GitHub at:
 
     https://github.com/dwincort/UISF

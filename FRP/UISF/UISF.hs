@@ -161,29 +161,29 @@ uisfPipeE = evMap . uisfPipe
 -- * UISF Getters and Convenience Constructor
 ------------------------------------------------------------
 
--- | Get the time signal from a UISF
+-- | Get the time signal from a UISF.
 getTime      :: UISF () Time
 getTime      = mkUISF nullLayout (\(_,f,t,_,_) -> (False, f, nullGraphic, nullTP, t))
 
--- | Get the context signal from a UISF
+-- | Get the context signal from a UISF.
 getCTX       :: UISF () CTX
 getCTX       = mkUISF nullLayout (\(c,f,_,_,_) -> (False, f, nullGraphic, nullTP, c))
 
--- | Get the UIEvent signal from a UISF
+-- | Get the UIEvent signal from a UISF.
 getEvents    :: UISF () UIEvent
 getEvents    = mkUISF nullLayout (\(_,f,_,e,_) -> (False, f, nullGraphic, nullTP, e))
 
--- | Get the focus data from a UISF
+-- | Get the focus data from a UISF.
 getFocusData :: UISF () Focus
 getFocusData = mkUISF nullLayout (\(_,f,_,_,_) -> (False, f, nullGraphic, nullTP, f))
 
--- | A thread handler for UISF.
+-- | Add a termination procedure to a UISF.
 addTerminationProc :: IO () -> UISF a a
 addTerminationProc p = UISF (const nullLayout) fun where
   fun  (_,f,_,_,b) = return (False, f, nullGraphic, Just p,  b, UISF (const nullLayout) fun2)
   fun2 (_,f,_,_,b) = return (False, f, nullGraphic, Nothing, b, UISF (const nullLayout) fun2)
 
--- | Get the mouse position from a UISF
+-- | Get the mouse position from a UISF.
 getMousePosition :: UISF () Point
 getMousePosition = proc _ -> do
   e <- getEvents -< ()

@@ -36,13 +36,10 @@ module FRP.UISF.AuxFunctions (
 --    (=>>), (->>), (.|.),
 --    snapshot, snapshot_,
 
-    -- * Signal Function Conversions
-    -- $conversions
-    -- *** Types
+    -- * Signal Function Asynchrony
+    -- $asynchrony
     Automaton(..), 
-    -- *** Conversions
-    -- $conversions2
-    asyncC, asyncV, asyncE, asyncC'
+    asyncV, asyncE, asyncC, asyncC'
 ) where
 
 import Prelude hiding ((.), id)
@@ -74,23 +71,31 @@ type Time = Double
 -- | DeltaT is a type synonym referring to a change in Time.
 type DeltaT = Double
 
--- | Instances of this class have arrowized access to the time
+-- | Instances of this class have arrowized access to time.  This is 
+--   convenient in many cases where time is necessary but we would 
+--   prefer not to make it an explicit argument.
 class ArrowTime a where
     time :: a () Time
 
+-- | Instances of the ArrowIO class have an arrowized ability to 
+--   perform IO actions.
 class Arrow a => ArrowIO a where
+  -- | The liftAIO function lifts an IO action into an arrow.
   liftAIO :: (b -> IO c) -> a b c
+  -- | The initialAIO function performs an IO action once upon the 
+  --   initialization of the arrow and then uses the result of that 
+  --   action to generate the arrow itself.
   initialAIO :: IO d -> (d -> a b c) -> a b c
 
 --------------------------------------
 -- Useful SF Utilities (Mediators)
 --------------------------------------
 
--- | constA is an arrowized version of const
+-- | constA is an arrowized version of const.
 constA  :: Arrow a => c -> a b c
 constA = arr . const
 
--- | constSF is a convenience
+-- | constSF is a convenience composing 'constA' with the given SF.
 constSF :: Arrow a => b -> a b d -> a c d
 constSF s sf = constA s >>> sf
 
@@ -136,7 +141,7 @@ mergeE _       le@(Just _) Nothing     = le
 mergeE _       Nothing     re@(Just _) = re
 mergeE resolve (Just l)    (Just r)    = Just (resolve l r)
 
--- | A nice infix operator for merging event lists
+-- | This is an infix specialization of 'mergeE' to lists.
 (~++) :: SEvent [a] -> SEvent [a] -> SEvent [a]
 (~++) = mergeE (++)
 
@@ -169,10 +174,11 @@ foldA merge i sf = h where
         d <- h  -< bs
         returnA -< merge c d
 
+-- | This is a special case of foldA for lists.
 runDynamic :: ArrowChoice a => a b c -> a [b] [c]
 runDynamic = foldA (:) []
 
--- | For folding results of a list of signal functions
+-- | For folding results of a list of signal functions.
 foldSF :: Arrow a => (b -> c -> c) -> c -> [a () b] -> a () c
 foldSF f c sfs = let inps = replicate (length sfs) () in
     constA inps >>> concatA sfs >>> arr (foldr f c)
@@ -184,21 +190,24 @@ foldSF f c sfs = let inps = replicate (length sfs) () in
 --        s2  <- sfb -< ()
 --        returnA -< f s1 s2
 
+-- | This behaves much like the maybe function except lifted to the 
+--   ArrowChoice level.  The arrow behaves like its first argument 
+--   when the input stream is Nothing and like its second when it is 
+--   a Just value.
 maybeA :: ArrowChoice a => a () c -> a b c -> a (Maybe b) c
 maybeA nothing just = proc eb -> do
   case eb of
     Just b -> just -< b
     Nothing -> nothing -< ()
 
+-- | This lifts the arrow to an event-based arrow that behaves as 
+--   a constant stream of Nothing when there is no event.
 evMap :: ArrowChoice a => a b c -> a (SEvent b) (SEvent c)
 evMap a = maybeA (constA Nothing) (a >>> arr Just)
 
 --------------------------------------
 -- Delays and Timers
 --------------------------------------
-
--- | delay is a unit delay.  It is exactly the delay from ArrowCircuit.
-
 
 -- | fdelay is a delay function that delays for a fixed amount of time, 
 --   given as the static argument.  It returns a signal function that 
@@ -355,19 +364,22 @@ data BufferOperation b =
 eventBuffer :: (ArrowTime a, ArrowCircuit a) => a (BufferOperation b) (SEvent [b], Bool)
 eventBuffer = arr (,()) >>> second time >>> eventBuffer'
 
+-- | eventBuffer' is a version that takes Time explicitly rather than 
+--   with ArrowTime.
 eventBuffer' :: ArrowCircuit a => a (BufferOperation b, Time) (SEvent [b], Bool)
 eventBuffer' = proc (bo', t) -> do
     let (bo, doPlay', tempo') = collapseBO bo'
     doPlay <- hold True -< doPlay'
     tempo <- hold 1 -< tempo'
     rec tprev  <- delay 0    -< t   --used to calculate dt, the change in time
-        buffer <- delay []   -< buffer''' --the buffer
+        buffer <- delay []   -< buffer' --the buffer
         let dt = tempo * (t-tprev) --dt will never be negative
-            buffer' = if doPlay then subTime buffer dt else buffer
-            buffer'' = update buffer' bo  --update the buffer based on the operation
-            (nextMsgs, buffer''') = if doPlay then getNextEvent buffer'' --get any events that are ready
-                                    else (Nothing, buffer'')
-    returnA -< (nextMsgs, null buffer''')
+            (nextMsgs, buffer') = if doPlay 
+                -- Subtract delta time, update the buffer, and get any events that are ready
+                then getNextEvent (update (subTime buffer dt) bo)
+                -- Regardless, update the buffer based on the operation
+                else (Nothing, update buffer bo)
+    returnA -< (nextMsgs, null buffer')
   where 
     subTime :: [(DeltaT, b)] -> DeltaT -> [(DeltaT, b)]
     subTime [] _ = []
@@ -423,29 +435,32 @@ snapshot_ = flip $ fmap . const -- same as ->>
 
 
 --------------------------------------
--- Signal Function Conversions
+-- Signal Function Asynchrony
 --------------------------------------
 
--- $conversions
--- Due to the internal IO, ArrowIO arrows are 
--- not necessarily pure.  Thus, when we run them, we say that they run \"in 
--- real time\".  This means that the time between two samples can vary and is 
--- inherently unpredictable.
--- 
--- However, sometimes we have a pure computation that we would like to run 
--- on a simulated clock.  This computation will expect to produce values at 
--- specific intervals, and because it's pure, that expectation can sort of be 
--- satisfied.  For this, we would use asynchV (V for virtual).
--- 
--- The other functions in this section are for other forms of asynchrony.  
--- There is one for Event-based asynchrony and two for continuous.
+{- $asynchrony
+Due to the ability for ArrowIO arrows to perform IO actions, they are 
+obviously not guaranteed to be pure, and thus when we run them, we say 
+that they run \"in real time\".  This means that the time between two 
+samples can vary and is inherently unpredictable.
 
+However, there are cases when we would like more control over the timing 
+of certain arrowized computations.  For instance, sometimes we have a 
+pure computation that we would like to run on a simulated clock.  This 
+computation will expect to produce values at specific intervals, and 
+because it's pure, that expectation can sort of be satisfied.
 
--- $conversions2
--- The following function is for lifting an Automaton to an ArrowIO by 
--- appropriately converting the "simulated time" Automaton into realtime.
+To achieve this, we allow these sub-computations to be performed 
+asynchronously.  The following functions behave subtly differently 
+to exhibit different forms of asynchrony for different use cases.
+-}
 
--- | The clockrate is the simulated rate of the input signal function.
+-- | The asyncV functions is for \"Virtual time\" asynchrony.  The 
+--   embedded signal function is given along with an expected 
+--   clockrate, and the output conforms to that clockrate as well as it 
+--   can.
+--   
+--   The clockrate is the simulated rate of the input signal function.
 --   The buffer is the amount of time the given signal function is 
 --   allowed to get ahead of real time.  The threadHandler is where the 
 --   ThreadId of the forked thread is sent.
@@ -488,21 +503,17 @@ asyncV clockrate buffer threadHandler sf = initialAIO iod darr where
 
 
 
--- | The asyncE function takes a pure signal function (an Automaton) and converts 
---   it into an asynchronous signal function usable in a MonadIO signal 
---   function context.  The output MSF takes events of type a, feeds them to 
---   the asynchronously running input SF, and returns events with the output 
---   b whenever they are ready.  The input SF is expected to run slowly 
---   compared to the output MSF, but it is capable of running just as fast.
---   The input stream is a value, an option to clear any buffered values, or 
---   nothing, and the output stream is either a result value, a AOCalculating 
---   indicating that the asynchronous function is calculating and giving the 
---   buffer size, or nothing.
+-- | The asyncE (E for \"Event\") function takes a signal function (an Automaton) and converts 
+--   it into an asynchronous event-based signal function usable in a ArrowIO signal 
+--   function context.  The output arrow takes events of type a, feeds them to 
+--   the asynchronously running input signal function, and returns events with the output 
+--   b whenever they are ready.  The input signal function is expected to run slowly 
+--   compared to the output one, but it is capable of running just as fast.
 asyncE :: (ArrowIO a, ArrowLoop a, ArrowCircuit a, ArrowChoice a, NFData c) => 
           (ThreadId -> a () ()) -- ^ The thread handler
        -> (Automaton (->) b c)  -- ^ The automaton to convert to asynchronize
        -> a (SEvent b) (SEvent c)
-asyncE threadHandler sf = {- delay AINoValue >>> -} initialAIO iod darr where
+asyncE threadHandler sf = initialAIO iod darr where
   iod = do
     inp <- newIORef empty
     out <- newIORef empty
@@ -532,10 +543,17 @@ asyncE threadHandler sf = {- delay AINoValue >>> -} initialAIO iod darr where
       EmptyL  -> (s,  Nothing)
       a :< s' -> (s', Just a)
 
--- | asyncC is the continuous async function.
+-- | The asyncC (C for \"Continuous time\") function allows a continuous 
+--   signal function to run as fast as it can asynchronously.  There are 
+--   no guarantees that all input data make it to the asynchronous signal 
+--   function; if this is required, asyncE should be used instead.  
+--   Rather, the embedded signal function runs as fast as it can on 
+--   whatever value it has most recently seen.  Its results are 
+--   bundled together in a list to be returned to the main signal 
+--   function.
 asyncC :: (ArrowIO a, NFData c) => 
           (ThreadId -> a () ()) -- ^ The thread handler
-       -> (Automaton (->) b c)      -- ^ The automaton to convert to realtime
+       -> (Automaton (->) b c)  -- ^ The automaton to convert to realtime
        -> a b [c]
 --asyncC th sf = asyncC' th (const . return $ (), return) (first sf)
 asyncC threadHandler sf = initialAIO iod darr where
@@ -557,9 +575,8 @@ asyncC threadHandler sf = initialAIO iod darr where
     worker inp out sf'
 
 
-
-
--- | A version of asyncC that does actions on either end of the automaton
+-- | This is a version of asyncC that does IO actions on either end of 
+--   the embedded signal function.
 asyncC' :: (ArrowIO a, ArrowLoop a, ArrowCircuit a, ArrowChoice a, NFData b) => 
            (ThreadId -> a () ()) -- ^ The thread handler
         -> (b -> IO d, e -> IO ()) -- ^ Effectful input and output channels for the automaton

@@ -18,51 +18,57 @@ import FRP.UISF.AuxFunctions (mergeE)
 -- * UI Types
 ------------------------------------------------------------
 
--- $uitypes
--- Widgets are arrows that map multiple inputs to multiple outputs.  
--- Additionally, they have a relatively static layout argument that, 
--- while it can change over time, is not dependent on any of its 
--- inputs at any given moment.
---
--- On the input end, a widget will accept:
---
---  - a graphical context, 
---
---  - some information about which widget is in focus (for the purposes 
---    of routing key presses and mouse clicks and potentially for drawing 
---    the widget differently), 
---
---  - and the current time.
---
--- On the output end, a widget will produce from these inputs:
--- 
---  - an indicator of whether the widget needs to be redrawn,
--- 
---  - any focus information that needs to be conveyed to future widgets, 
--- 
---  - the graphics to render to display this widget,
--- 
---  - and any new ThreadIds to keep track of (for proper shutdown when finished).
---
--- Additionally, as widgets are generic arrows, there will be a parameterized 
--- inputs and output type.
---
--- In this file, we will declare the various types to make creating the overall 
--- UI possible.  For the widget type itself, see UISF in FRP.UISF.UISF.
+{- $uitypes
+In this module, we will declare the various types to make creating the 
+overall UI possible.  We will discuss the ideas for widgets in some 
+detail, but for specifics on the type of a widget (the 'UISF' type), 
+see the UISF type in "FRP.UISF.UISF", and for information on specific 
+widgets, see "FRP.UISF.Widget".
 
+Widgets are arrows that map multiple inputs to multiple outputs.  
+Additionally, they have a relatively static layout argument that, 
+while it can change over time, is not dependent on any of its 
+inputs at any given moment.
+
+On the input end, a widget will accept:
+
+ - a graphical context, 
+
+ - some information about which widget is in focus (for the purposes 
+   of routing key presses and mouse clicks and potentially for drawing 
+   the widget differently), 
+
+ - and the current time.
+
+ - an event with data relating to UI actions.
+
+On the output end, a widget will produce from these inputs:
+
+ - an indicator of whether the widget needs to be redrawn,
+
+ - any focus information that needs to be conveyed to future widgets, 
+
+ - the graphics to render to display this widget,
+
+ - and a procedure to run upon termination (for proper shutdown when finished).
+
+Additionally, as widgets are generic arrows, there will be a parameterized 
+input and output types.
+
+-}
 
 ------------------------------------------------------------
 -- * Control Data
 ------------------------------------------------------------
 
--- | The control data is simply a list of Thread Ids.
+-- | The termination procedure is simply a potential IO action.
 type TerminationProc = Maybe (IO ())
 
--- | No new thread ids.
+-- | The null termination procedure is no action.
 nullTP :: TerminationProc
 nullTP = Nothing
 
--- | A method for merging to control data objects.
+-- | A method for merging two termination procedures.
 mergeTP :: TerminationProc -> TerminationProc -> TerminationProc
 mergeTP = mergeE (>>)
 
@@ -114,9 +120,9 @@ type Rect = (Point, Dimension)
 --   so we have this convenience function for their creation.
 --   This function takes layout information for first the horizontal 
 --   dimension and then the vertical.
-makeLayout :: LayoutType ->     -- ^ Horizontal Layout information
-              LayoutType ->     -- ^ Vertical Layout information
-              Layout
+makeLayout :: LayoutType  -- ^ Horizontal Layout information
+           -> LayoutType  -- ^ Vertical Layout information
+           -> Layout
 makeLayout (Fixed h) (Fixed v) = Layout 0 0 h v 0 0
 makeLayout (Stretchy minW) (Fixed v) = Layout 1 0 0 v minW 0
 makeLayout (Fixed h) (Stretchy minH) = Layout 0 1 h 0 0 minH
