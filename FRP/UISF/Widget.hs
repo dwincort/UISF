@@ -693,11 +693,12 @@ focusable (UISF layout f) = proc x -> do
         (f, hasFocus') = case (focus, hasFocus, inp) of
           (HasFocus, _, _) -> (HasFocus, True)
           (SetFocusTo n, _, _) | n == myid -> (NoFocus, True)
+          (DenyFocus, _, _) -> (DenyFocus, False)
           (_, _,    Button pt _ True) -> (NoFocus, pt `inside` bounds ctx)
           (_, True, SKey TAB _ True) -> if isShift then (SetFocusTo (myid-1), False) 
                                                     else (SetFocusTo (myid+1), False)
           (_, _, _) -> (focus, hasFocus)
-        focus' = if hasFocus' then HasFocus else NoFocus
+        focus' = if hasFocus' then HasFocus else DenyFocus
         inp' = if hasFocus' then (case inp of 
               SKey TAB _ _ -> NoUIEvent
               _ -> inp)

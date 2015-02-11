@@ -269,6 +269,9 @@ data FocusInfo =
       | SetFocusTo WidgetID
         -- ^ Indicates that the widget whose id is given 
         --   should take focus.  That widget should then pass NoFocus onward.
+      | DenyFocus
+        -- ^ Any widget that sees this value should recognize that 
+        --   they are no longer in focus.  This is useful for nested focus.
   deriving (Show, Eq)
 
 -- | The dirty bit is a bit to indicate if the widget needs to be redrawn.
