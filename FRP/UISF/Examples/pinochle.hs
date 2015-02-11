@@ -105,24 +105,16 @@ main = runUI (defaultUIParams {uiSize=(800, 700), uiTitle="Pinochle Assistant"})
 pinochleSF :: UISF () ()
 pinochleSF = proc _ -> do
     clearEv <- edge <<< setSize (120,22) (button "Clear hand?") -< ()
-    spadeB   <- title "Spades"   $ leftRight $ concatA $ map (cardSelector . show) nums -< repeat clearEv
-    heartB   <- title "Hearts"   $ leftRight $ concatA $ map (cardSelector . show) nums -< repeat clearEv
-    diamondB <- title "Diamonds" $ leftRight $ concatA $ map (cardSelector . show) nums -< repeat clearEv
-    clubB    <- title "Clubs"    $ leftRight $ concatA $ map (cardSelector . show) nums -< repeat clearEv
+    hand <- handSelector allSuits nums -< clearEv
     trump    <- leftRight $ label "Choose Trump:" >>> radio (map show allSuits) 0 >>> arr toEnum -< ()
-    let spades   = concat $ zipWith replicate spadeB nums
-        hearts   = concat $ zipWith replicate heartB nums
-        diamonds = concat $ zipWith replicate diamondB nums
-        clubs    = concat $ zipWith replicate clubB nums
-        hand = addToHand emptyHand $ map (Card Spades) spades ++ map (Card Hearts) hearts ++ map (Card Diamonds) diamonds ++ map (Card Clubs) clubs 
-    (trump',hand') <- delay (Spades,emptyHand) -< (trump,hand)
-    rec meld <- delay [] -< if hand == hand' && trump == trump' then meld else getMeld trump hand
+    updateEv <- unique -< (trump,hand)
+    rec meld <- delay [] -< maybe meld (const $ getMeld trump hand) updateEv
     --display -< shortShow hand
     leftRight $ label "Number of cards:" >>> setSize (40,22) display -< handLength hand
     leftRight $ label "Total meld =" >>> displayStr -< show (sum (map snd3 meld)) ++ ": " ++ show (map fst3 meld)
-    kittenSizeStr <- leftRight $ label "Kitty size =" >>> setSize (40,22) (textboxE "2") -< case (hand == hand', handLength hand) of
-            (False, 11) -> Just $ show 4
-            (False, 15) -> Just $ show 3
+    kittenSizeStr <- leftRight $ label "Kitty size =" >>> setSize (40,22) (textboxE "2") -< case (updateEv, handLength hand) of
+            (Just _, 11) -> Just $ show 4
+            (Just _, 15) -> Just $ show 3
             _ -> Nothing
     restr <- checkbox "Restrict trump suit?" False -< ()
     b <- edge <<< button "Calculate meld from kitty" -< ()
@@ -141,11 +133,6 @@ pinochleSF = proc _ -> do
         _ -> Nothing
     returnA -< ()
 
-
-prepHistogramData :: Map.Map Int Int -> [(Double, String)]
-prepHistogramData m = map f [0..x] where
-  x = maybe 0 (fst . fst) $ Map.maxViewWithKey m -- get max meld value (the max key in the map)
-  f i = (fromIntegral $ fromMaybe 0 $ Map.lookup i m, show i) -- return pair of count and meld value (in String form)
 
 
 -------------------------------------------------------------
@@ -245,9 +232,17 @@ getMeld trump hand =
 -------------------------- Widgets --------------------------
 -------------------------------------------------------------
 
+handSelector :: [Suit] -> [Number] -> UISF (SEvent ()) Hand
+handSelector [] _ = constA emptyHand
+handSelector (s:ss) ns = proc ev -> do
+  bs <- title (show s) $ leftRight $ concatA $ map (cardSelector . show) ns -< repeat ev
+  hand <- handSelector ss ns -< ev
+  returnA -< addToHand hand (map (Card s) (concat $ zipWith replicate bs ns))
+
+
 -- cardSelector is a widget that looks kind of like a button except that 
--- in its unpressed state, it shows 0, when it's pressed once, it shows 
--- 1, and when it's pressed twice, it shows 2.  A third press resets it.
+-- in its unpressed state, it shows 0; when it's pressed once, it shows 
+-- 1; and when it's pressed twice, it shows 2.  A third press resets it.
 -- It takes as argument the names of the cards to select and a dynamic 
 -- "clear" event.
 cardSelector :: String -> UISF (SEvent ()) Int
@@ -272,6 +267,12 @@ displayStrList = proc strs ->
 -------------------------------------------------------------
 --------------------- Helper Functions ----------------------
 -------------------------------------------------------------
+
+prepHistogramData :: Map.Map Int Int -> [(Double, String)]
+prepHistogramData m = map f [0..x] where
+  x = maybe 0 (fst . fst) $ Map.maxViewWithKey m -- get max meld value (the max key in the map)
+  f i = (fromIntegral $ fromMaybe 0 $ Map.lookup i m, show i) -- return pair of count and meld value (in String form)
+
 
 -- this only works for the ints in the list between 0 and 2 inclusive.
 ncr :: [(a, Int)] -> Int -> [[a]]

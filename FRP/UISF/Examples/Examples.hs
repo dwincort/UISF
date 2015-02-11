@@ -66,10 +66,9 @@ colorDemo = setSize (300, 220) $ title "Color" $ pad (4,0,4,0) $ leftRight $ pro
   r <- newColorSlider "R" -< ()
   g <- newColorSlider "G" -< ()
   b <- newColorSlider "B" -< ()
-  prevRGB <- delay (0,0,0) -< (r,g,b)
-  changed <- delay True    -< (r,g,b) == prevRGB
+  changed <- unique -< (r,g,b)
   let rect = withColor' (rgb r g b) (box ((0,0),d))
-  pad (4,8,0,0) $ canvas d -< if changed then Just rect else Nothing
+  pad (4,8,0,0) $ canvas d -< fmap (const rect) changed
   where
     d = (170,170)
     newColorSlider l = title l $ topDown $ proc _ -> do
@@ -93,10 +92,10 @@ textboxdemo = setLayout (makeLayout (Stretchy 150) (Fixed 100)) $
 -- | This is the main demo that incorporates all of the other examples 
 -- together.  In addition to demonstrating how 
 -- different widgets can connect, it also shows off the tabbing 
--- behavior built in to the GUI.  Pressing tab cycles through focuable 
+-- behavior built in to the GUI.  Pressing tab cycles through focusable 
 -- elements, and pressing shift-tab cycles in reverse.
 main :: IO ()
 main = runUI (defaultUIParams {uiSize=(500, 500)}) $ 
-  (leftRight $ (bottomUp $ timeEx >>> buttonEx) >>> (topDown $ checkboxEx >>> arr id) >>> radioButtonEx) >>>
+  (leftRight $ (bottomUp $ timeEx >>> buttonEx) >>> (topDown $ checkboxEx) >>> radioButtonEx) >>>
   (leftRight $ shoppinglist >>> colorDemo) >>> textboxdemo >>> arr id
 
