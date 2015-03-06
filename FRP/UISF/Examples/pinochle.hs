@@ -16,6 +16,7 @@
 -- make sure to use "ghc --make -main-is FRP.UISF.Examples.Pinochle -O2 pinochle.hs" for best performance
 
 -- TODO: Perhaps make the "calculate meld" button disabled when it is mid-calculation
+-- TODO: Change kitty size to a radio of 1-5(?)
 
 {-# LANGUAGE Arrows, BangPatterns #-}
 module FRP.UISF.Examples.Pinochle where
@@ -58,7 +59,7 @@ data Number = Nine | Jack | Queen | King | Ten | Ace
     deriving (Show, Eq, Enum, Ord)
 
 allSuits = [Spades, Hearts, Diamonds, Clubs]
-nums = [Ace, Ten, King, Queen, Jack, Nine]
+allNums = [Ace, Ten, King, Queen, Jack, Nine]
 
 type Hand = Array Card Int
 
@@ -104,11 +105,11 @@ main = runUI (defaultUIParams {uiSize=(800, 700), uiTitle="Pinochle Assistant"})
 
 pinochleSF :: UISF () ()
 pinochleSF = proc _ -> do
-    clearEv <- edge <<< setSize (120,22) (button "Clear hand?") -< ()
-    hand <- handSelector allSuits nums -< clearEv
+    clearEv  <- edge <<< setSize (120,22) (button "Clear hand?") -< ()
+    hand     <- handSelector allSuits allNums -< clearEv
     trump    <- leftRight $ label "Choose Trump:" >>> radio (map show allSuits) 0 >>> arr toEnum -< ()
     updateEv <- unique -< (trump,hand)
-    rec meld <- delay [] -< maybe meld (const $ getMeld trump hand) updateEv
+    meld <- hold [] -< fmap (uncurry getMeld) updateEv
     --display -< shortShow hand
     leftRight $ label "Number of cards:" >>> setSize (40,22) display -< handLength hand
     leftRight $ label "Total meld =" >>> displayStr -< show (sum (map snd3 meld)) ++ ": " ++ show (map fst3 meld)
@@ -118,19 +119,15 @@ pinochleSF = proc _ -> do
             _ -> Nothing
     restr <- checkbox "Restrict trump suit?" False -< ()
     b <- edge <<< button "Calculate meld from kitty" -< ()
-    kre <- (asyncUISFE $ arr $ uncurry $ uncurry kittyResult) -< 
-            fmap (const ((hand, kittenSizeStr), if restr then Just trump else Nothing)) b
-    k <- hold [] -< case (clearEv, kre, b) of
-        (Just _, _, _) -> Just []
-        (Nothing, Just (r,_), _) -> Just r
-        (Nothing, _, Just _) -> Just ["Calculating ..."]
-        _ -> Nothing
-    displayStrList -< k
-    histogramWithScale (makeLayout (Stretchy 10) (Fixed 150)) -< case (clearEv, kre, b) of
-        (Just _, _, _) -> Just []
-        (_, Just (_,m), _) -> Just $ prepHistogramData m
-        (_, _, Just _) -> Just []
-        _ -> Nothing
+    kre <- (asyncUISFE $ arr kittyResult) -< 
+            fmap (const (hand, kittenSizeStr, if restr then Just trump else Nothing)) b
+    let (k,d) = case (clearEv, kre, b) of
+            (Just _, _, _) -> (Just [], Just [])
+            (Nothing, Just (k,d), _) -> (Just k, Just $ prepHistogramData d)
+            (Nothing, _, Just _) -> (Just ["Calculating ..."], Just [])
+            _ -> (Nothing, Nothing)
+    runDynamic displayStr <<< hold [] -< k
+    histogramWithScale (makeLayout (Stretchy 10) (Fixed 150)) -< d
     returnA -< ()
 
 
@@ -139,11 +136,11 @@ pinochleSF = proc _ -> do
 --------------------- Kitty calculation ---------------------
 -------------------------------------------------------------
 
-kittyResult :: Hand -> String -> Maybe Suit -> ([String], Map.Map Int Int)
-kittyResult _ s _ | null (reads s :: [(Int,String)]) = (["Unable to parse kitty size"], Map.empty)
-kittyResult hand s _ | handLength hand + fst (head (reads s :: [(Int,String)])) > handLength deckArray = 
+kittyResult :: (Hand, String, Maybe Suit) -> ([String], Map.Map Int Int)
+kittyResult (_, s, _) | null (reads s :: [(Int,String)]) = (["Unable to parse kitty size"], Map.empty)
+kittyResult (hand, s, _) | handLength hand + fst (head (reads s :: [(Int,String)])) > handLength deckArray = 
     (["Kitty size + hand size > deck size"], Map.empty)
-kittyResult hand s trump = (("Mean = " ++ show meanMeld ++ ", Max = " 
+kittyResult (hand, s, trump) = (("Mean = " ++ show meanMeld ++ ", Max = " 
                      ++ show (fst4 $ head maxMeld) ++ " with " ++ show (sum $ map thd4 maxMeld) ++ " options:"):
                      map (\m -> show (thd4 m) ++ " of " ++ show (snd4 m) ++ " with " ++ show (fth4 m) ++ " as trump") maxMeld,
                    meldMap)
@@ -235,7 +232,7 @@ getMeld trump hand =
 handSelector :: [Suit] -> [Number] -> UISF (SEvent ()) Hand
 handSelector [] _ = constA emptyHand
 handSelector (s:ss) ns = proc ev -> do
-  bs <- title (show s) $ leftRight $ concatA $ map (cardSelector . show) ns -< repeat ev
+  bs <- leftRight $ title (show s) $ concatA $ map (cardSelector . show) ns -< repeat ev
   hand <- handSelector ss ns -< ev
   returnA -< addToHand hand (map (Card s) (concat $ zipWith replicate bs ns))
 
@@ -258,10 +255,6 @@ cardSelector str = arr (fmap (const 0)) >>> cyclebox' d lst 0 where
          // box (if i>0 then pushed else popped) b
     lst = zip (map draw [(0,"0 "++str++"s"), (1, "1 "++str), (2, "2 "++str++"s")]) [0,1,2]
 
-
-displayStrList :: UISF [String] ()
-displayStrList = proc strs -> 
-    if null strs then returnA -< () else (arr snd <<< (displayStr *** displayStrList) -< (head strs, tail strs))
 
 
 -------------------------------------------------------------

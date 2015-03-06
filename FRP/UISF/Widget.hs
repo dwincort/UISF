@@ -57,7 +57,7 @@ label s = mkBasicWidget layout draw
   where
     (minw, minh) = (length s * 8 + padding * 2, 16 + padding * 2)
     layout = makeLayout (Fixed minw) (Fixed minh)
-    draw ((x, y), (w, h)) = withColor Black $ text (x + padding, y + padding) s
+    draw ((x, y), (w, h)) = withColor Black $ text (x + padding, y + (h `div` 2) - 8) s
 
 -----------------
 -- Display Box --
@@ -204,7 +204,7 @@ genButton sticky l = focusable $
     processRegular _ s b evt = (s', s', s /= s')
       where 
         s' = case evt of
-          Button _ True down -> case (s, down) of
+          Button pt True down | pt `inside` b -> case (s, down) of
             (False, True) -> True
             (True, False) -> False
             _ -> s
@@ -212,10 +212,10 @@ genButton sticky l = focusable $
           SKey ENTER _ down -> down
           Key ' ' _ down -> down
           _ -> s
-    processSticky _ s _ evt = (s', s', s /= s')
+    processSticky _ s b evt = (s', s', s /= s')
       where 
         s' = case evt of
-          Button _ True True -> not s
+          Button pt True True | pt `inside` b -> not s
           SKey ENTER _ True -> not s
           Key ' ' _ True -> not s
           _ -> s

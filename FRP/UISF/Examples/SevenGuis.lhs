@@ -17,6 +17,7 @@ We declare the module name and import UISF
 
 > module FRP.UISF.Examples.SevenGuis where
 > import FRP.UISF
+> import FRP.UISF.UITypes (Layout)
 > import Text.Read (readMaybe)  -- For Temperature Converter
 > import Control.Monad (join)   -- For Temperature Converter
 > 
@@ -76,7 +77,7 @@ to pass it to runUI.
 ---------------------------------------
 
 The second GUI is a temperature converter that dynamically converts 
-between celsius and fahrenheit.  This introduces text parsing and 
+between Celsius and Fahrenheit.  This introduces text parsing and 
 bidirectional dataflow, the first of which is fairly easy with 
 standard Haskell, and the second of which is simple with arrowized 
 FRP.
@@ -198,9 +199,10 @@ canvas' widget builder.  The widget will take the pair of
 size.  To use canvas', we supply a layout argument (stretchy in the 
 horizontal direction but fixed to 30 pixels in the vertical direction).
 
-> guage :: UISF (DeltaT, DeltaT) ()
-> guage = arr Just >>> canvas' (makeLayout (Stretchy 0) (Fixed 30)) draw where
->   draw (x,t) (w,h) = block ((0,padding),(round $ x*(fromIntegral (w - 2*padding))/t,h-2*padding))
+> gauge :: Layout -> UISF (DeltaT, DeltaT) ()
+> gauge l = unique >>> canvas' l draw where
+>   draw (x,t) (w,h) = block ((0,padding),(min w' $ round $ x*(fromIntegral w')/t,h-2*padding))
+>       where w' = (w - 2*padding)
 
 Next, we make a short helper function for keeping track of elapsed time.  
 UISF provides "getTime", which provides the number of seconds since the 
@@ -219,7 +221,7 @@ we must apply a delay to it to prevent an infinite recursion.
 
 > timerGUISF :: UISF () ()
 > timerGUISF = proc _ -> do
->     rec leftRight $ label "Elapsed Time:" >>> guage -< (e,d)
+>     rec leftRight $ label "Elapsed Time:" >>> gauge (makeLayout (Stretchy 1) (Fixed 30)) -< (e,d)
 >         display -< e
 >         leftRight $ label "Duration:" >>> display -< d
 >         d <- hSlider (0,30) 4 -< ()
@@ -353,7 +355,7 @@ arrow combinators.  Based on button presses, we update the database.
 ---------------------------------------
 
 The drawing canvas for the circle draw example is a bit more involved than 
-the custom guage widget we used for the timer, and so instead of using the 
+the custom gauge widget we used for the timer, and so instead of using the 
 canvas widget builder, we will use the more powerful mkWidget.
 
 To start, let's write some code for circles.  We'll begin with a very 

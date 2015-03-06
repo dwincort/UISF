@@ -2,3 +2,10 @@ UISF future features/changes
 - remove the ArrowTime class and replace it with (ArrowReader Time) or something like that?
 - make the output of asyncC (and asyncC') be monoidal
 - rename the Layout constructors to: wFill  hFill  wFixed  hFixed  wMin  hMin
+- Redo the color stuff in SOE so it's cleaner; perhaps remove Color as a datatype and replace it with values of RGB; then export RGB and those colors; what is RGBA?
+- Layout should probably be exported by FRP.UISF.  At least the type if not the record values/constructors
+- AuxFunctions.accum -- perhaps the returnA line should read "maybe b ($b) f" so that it is entirely undelayed -- this may break things
+- Add spacer to Widgets (and UISF default exports)
+    spacer :: Layout -> UISF a a
+    spacer l = setLayout l $ arr id
+- BIG BREAKING CHANGE - rename textboxE to textbox and textbox to textbox'
