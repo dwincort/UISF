@@ -13,7 +13,7 @@
 
 {-# LANGUAGE Arrows #-}
 module FRP.UISF.Examples.FFT where
-import FRP.UISF
+import FRP.UISF hiding (delay)
 import Control.Arrow.Operations
 import Numeric.FFT (fft)
 import Data.Complex
@@ -108,7 +108,7 @@ fftA qf fp = proc d -> do
 -- This example shows off the histogram and realtimeGraph widgets by 
 -- summing two sin waves and displaying them.  Additionally, it makes 
 -- use of two horizontal sliders.
--- This example also shows off convertToUISF and how to take a SigFun, 
+-- This example also shows off asyncUISFV and how to take a SigFun, 
 -- of the type used to create sound, and convert it to a UISF.
 fftEx :: UISF () ()
 fftEx = proc _ -> do
@@ -116,7 +116,7 @@ fftEx = proc _ -> do
     _ <- leftRight (label "Freq 1: " >>> display) -< f1
     f2 <- hSlider (1, 2000) 440 -< ()
     _ <- leftRight (label "Freq 2: " >>> display) -< f2
-    d <- convertToUISF sr 0.1 myAutomaton -< (f1, f2)
+    d <- asyncUISFV sr 0.1 myAutomaton -< (f1, f2)
     let fft = listToMaybe $ catMaybes $ map (snd . fst) d
         s = map (\((s, _), t) -> (s,t)) d
     _ <- histogram (makeLayout (Stretchy 10) (Fixed 150)) -< fft

@@ -98,14 +98,16 @@ so we do this twice, once for each textbox.
 
 > tempCovertSF :: UISF () ()
 > tempCovertSF = leftRight $ proc _ -> do
->   rec c <- unique <<< textboxE "" <<< delay Nothing -< updateC
+>   rec c <- unique <<< textboxE "" -< updateC
 >       label "degrees Celsius = " -< ()
->       f <- unique <<< textboxE "" <<< delay Nothing -< updateF
+>       f <- unique <<< textboxE "" -< updateF
 >       label "degrees Fahrenheit" -< ()
 >       let cNum = join $ fmap (readMaybe :: String -> Maybe Double) c
 >           fNum = join $ fmap (readMaybe :: String -> Maybe Double) f
->           updateC = fmap (\f -> show $ round $ (f - 32) * (5/9)) fNum
->           updateF = fmap (\c -> show $ round $ c * (9/5) + 32) cNum
+>           cNum' = if c == updateC then Nothing else cNum
+>           fNum' = if f == updateF then Nothing else fNum
+>       updateC <- delay Nothing -< fmap (\f -> show $ round $ (f - 32) * (5/9)) fNum'
+>       updateF <- delay Nothing -< fmap (\c -> show $ round $ c * (9/5) + 32) cNum'
 >   returnA -< ()
 >
 > tempConvert = runUI (defaultUIParams {uiSize=(400, 24), uiTitle="Temp Converter"}) tempCovertSF
