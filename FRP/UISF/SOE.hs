@@ -285,9 +285,13 @@ emptyGraphic = Graphic $ do
   GL.clear [GL.ColorBuffer, GL.StencilBuffer]
 
 translateGraphic :: (Int, Int) -> Graphic -> Graphic
-translateGraphic (x, y) (Graphic g) = Graphic $ GL.preservingMatrix $ do
+translateGraphic (x, y) (Graphic g) = Graphic $ do
   GL.translate (GL.Vector3 (fromIntegral x) (fromIntegral y) (0::GLfloat))
   g
+  GL.translate (GL.Vector3 (fromIntegral (0-x)) (fromIntegral (0-y)) (0::GLfloat))
+--translateGraphic (x, y) (Graphic g) = Graphic $ GL.preservingMatrix $ do
+--  GL.translate (GL.Vector3 (fromIntegral x) (fromIntegral y) (0::GLfloat))
+--  g
 
 overGraphic :: Graphic -> Graphic -> Graphic
 overGraphic (Graphic over) (Graphic base) = Graphic (base >> over)
