@@ -1,0 +1,7 @@
+changelog
+
+0.3.0.2
+* Added changelog
+* Fixed a bug with nested focusable widgets incorrectly focusing
+* Fixed some bugs in examples, also cleaned up example code to be clearer and more concise
+* Fixed a bug causing translateGraphic to not nest properly

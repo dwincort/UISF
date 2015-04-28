@@ -2,10 +2,24 @@ UISF future features/changes
 - remove the ArrowTime class and replace it with (ArrowReader Time) or something like that?
 - make the output of asyncC (and asyncC') be monoidal
 - rename the Layout constructors to: wFill  hFill  wFixed  hFixed  wMin  hMin
+- Add in a layout parameter to deal with excess context space (see notes in FRP.UISF.UITypes.divideCTX)
 - Redo the color stuff in SOE so it's cleaner; perhaps remove Color as a datatype and replace it with values of RGB; then export RGB and those colors; what is RGBA?
+- Put together a proper interface for SOE to ease the process of adapting UISF to work with other graphical back-ends
+    maybe make a GraphicLib class to make it more plug-and-play?
+    Switch from GLFW to OpenGL
 - Layout should probably be exported by FRP.UISF.  At least the type if not the record values/constructors
 - AuxFunctions.accum -- perhaps the returnA line should read "maybe b ($b) f" so that it is entirely undelayed -- this may break things
 - Add spacer to Widgets (and UISF default exports)
     spacer :: Layout -> UISF a a
     spacer l = setLayout l $ arr id
 - BIG BREAKING CHANGE - rename textboxE to textbox and textbox to textbox'
+- make a data type UIText: UIText may be expanded (for instance with font, size, etc.) but is essentially a list of (textColor, bgColor, String).  Label takes a UIText, and certain versions of textbox work with UIText
+- make a scrollable pane that when shrunk below its internal size, has scroll bars that allow navigation within
+- mergeE is basically a generic mappend (especially since everyone uses it that way anyway).  How about we remove mergeE entirely and define ~++ as mappend and have UISF export that by default
+- make a cabal "test-suite" (or second library or something like that?) that compiles the various example files.
+- Can I make a test version of runUI that, instead of actually running the UISF, runs it for a few ticks with interesting click/keystroke events and makes sure that the GUI being tested doesn't blackhole?  Are there other ways to auto-test GUIs?
+- mkBasicWidget should be (a -> b) and its draw routine should take either a or b or both.  Then, I can make a dynamic label that prints its input.
+- histogram probably shouldn't normalize internally -- what happens if the input is all 0?  Instead, we *could* apply bounding, but basically, let's leave it up to the caller to normalize.  This way, we can get proper 0s and 1s if we want them.
+- histogramWithScale's sidebuffer value should be derived from the first and last elements of the scale to avoid them being cut off
+- Add settability, but also a way to disable settability (for performance reasons).
+

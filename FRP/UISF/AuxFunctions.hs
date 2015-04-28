@@ -14,8 +14,8 @@
 module FRP.UISF.AuxFunctions (
     -- * Types
     SEvent, Time, DeltaT, 
-    ArrowTime, time, 
-    ArrowIO, liftAIO, initialAIO, 
+    ArrowTime(..), 
+    ArrowIO(..),
     -- * Useful SF Utilities (Mediators)
     constA, constSF, 
     edge, 

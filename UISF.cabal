@@ -1,5 +1,5 @@
 name:           UISF
-version:        0.3.0.1
+version:        0.3.0.2
 Cabal-Version:  >= 1.8
 license:        BSD3
 license-file:   License
@@ -16,6 +16,7 @@ description:
         UISF is a library for making arrowized GUIs.
 extra-source-files:
         ReadMe.txt,
+        changelog.txt,
         FRP/UISF/Examples/EnableGUI.hs
         FRP/UISF/Examples/SevenGuis.lhs
         FRP/UISF/Examples/Pinochle.hs

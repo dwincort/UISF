@@ -109,7 +109,7 @@ type Rect = (Point, Dimension)
 -- * UI Layout
 ------------------------------------------------------------
 
--- $ctc The layout of a widget provides data to calculate its actual size
+-- $ The layout of a widget provides data to calculate its actual size
 -- in a given context.  
 -- Layout calculation makes use of lazy evaluation to do everything in one pass.  
 -- Although the UI function maps from Context to Layout, all of the fields of 
@@ -229,7 +229,7 @@ mergeLayout a (Layout n m u v minw minh) (Layout n' m' u' v' minw' minh') =
 
 
 ------------------------------------------------------------
--- * Graphics and System State
+-- * Graphics
 ------------------------------------------------------------
 
 -- | Merging two graphics can be achieved with overGraphic, but 
@@ -244,7 +244,13 @@ mergeGraphics ctx (g1, l1) (g2, l2) = case (l1 == nullLayout, l2 == nullLayout) 
   (False, False) -> overGraphic g2 g1
 
 
--- The Focus and DirtyBit types are for system state.
+------------------------------------------------------------
+-- * System State
+------------------------------------------------------------
+-- $ The DirtyBit and Focus types are for system state.
+
+-- | The dirty bit is a bit to indicate if the widget needs to be redrawn.
+type DirtyBit = Bool
 
 -- | The Focus type helps focusable widgets communicate with each 
 -- other about which widget is in focus.  It consists of a WidgetID 
@@ -273,9 +279,6 @@ data FocusInfo =
         -- ^ Any widget that sees this value should recognize that 
         --   they are no longer in focus.  This is useful for nested focus.
   deriving (Show, Eq)
-
--- | The dirty bit is a bit to indicate if the widget needs to be redrawn.
-type DirtyBit = Bool
 
 
 

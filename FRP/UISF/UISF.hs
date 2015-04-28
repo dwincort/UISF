@@ -19,7 +19,6 @@ module FRP.UISF.UISF (
     -- * UISF Getters
     getTime, getCTX, getEvents, getFocusData, addTerminationProc, getMousePosition, 
     -- * UISF constructors, transformers, and converters
-    -- $ctc
     mkUISF, 
     -- * UISF Lifting
     -- $lifting
