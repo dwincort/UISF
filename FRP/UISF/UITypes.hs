@@ -123,10 +123,10 @@ type Rect = (Point, Dimension)
 makeLayout :: LayoutType  -- ^ Horizontal Layout information
            -> LayoutType  -- ^ Vertical Layout information
            -> Layout
-makeLayout (Fixed h) (Fixed v) = Layout 0 0 h v 0 0
-makeLayout (Stretchy minW) (Fixed v) = Layout 1 0 0 v minW 0
-makeLayout (Fixed h) (Stretchy minH) = Layout 0 1 h 0 0 minH
-makeLayout (Stretchy minW) (Stretchy minH) = Layout 1 1 0 0 minW minH
+makeLayout (Fixed w) (Fixed h) = Layout 0 0 w h 0 0
+makeLayout (Stretchy wMin) (Fixed h) = Layout 1 0 0 h wMin 0
+makeLayout (Fixed w) (Stretchy hMin) = Layout 0 1 w 0 0 hMin
+makeLayout (Stretchy wMin) (Stretchy hMin) = Layout 1 1 0 0 wMin hMin
 
 -- | A dimension can either be:
 data LayoutType = 
@@ -143,23 +143,22 @@ nullLayout = Layout 0 0 0 0 0 0
 -- | More complicated layouts can be manually constructed with direct 
 -- access to the Layout data type.
 --
--- 1. hFill and vFill specify how much stretching space (in comparative 
---    units) in the horizontal and vertical directions should be 
---    allocated for this widget.
+-- 1. wFill and hFill specify how much stretching space (in comparative 
+--    units) in the width and height should be allocated for this widget.
 -- 
--- 2. hFixed and vFixed specify how much non-stretching space (in pixels) 
+-- 2. wFixed and hFixed specify how much non-stretching space (in pixels) 
 --    of width and height should be allocated for this widget.
 -- 
--- 3. minW and minH specify minimum values (in pixels) of width and height 
+-- 3. wMin and hMin specify minimum values (in pixels) of width and height 
 --    for the widget's stretchy dimensions.
 
 data Layout = Layout
-  { hFill  :: Int
-  , vFill  :: Int
+  { wFill  :: Int
+  , hFill  :: Int
+  , wFixed :: Int
   , hFixed :: Int
-  , vFixed :: Int
-  , minW   :: Int
-  , minH   :: Int
+  , wMin   :: Int
+  , hMin   :: Int
   } deriving (Eq, Show)
 
 
@@ -198,15 +197,15 @@ divideCTX ctx@(CTX a ((x, y), (w, h)) c)
     wportion fill = div' (fill * (w - wFixed - wFixed')) (wFill + wFill')
     (w1L,w2L) = let w1 = min w $ wFixed  + max wMin  (wportion wFill)
                     w2 = wFixed' + max wMin' (wportion wFill')
-                in (w1, w-w1) --if w1+w2 > w then (w1, w-w1) else (w1, w2)
-    h1L = h --max hMin  (if hFill  == 0 then hFixed  else h)
-    h2L = h --max hMin' (if hFill' == 0 then hFixed' else h)
+                in if w1+w2 > w then (w1, w-w1) else (w1, w2)
+    h1L = max hMin  (if hFill  == 0 then hFixed  else h)
+    h2L = max hMin' (if hFill' == 0 then hFixed' else h)
     hportion fill = div' (fill * (h - hFixed - hFixed')) (hFill + hFill')
     (h1T,h2T) = let h1 = min h $ hFixed  + max hMin  (hportion hFill)
                     h2 = hFixed' + max hMin' (hportion hFill')
-                in (h1, h-h1) --if h1+h2 > h then (h1, h-h1) else (h1, h2)
-    w1T = w --max wMin  (if wFill  == 0 then wFixed  else w)
-    w2T = w --max wMin' (if wFill' == 0 then wFixed' else w)
+                in if h1+h2 > h then (h1, h-h1) else (h1, h2)
+    w1T = max wMin  (if wFill  == 0 then wFixed  else w)
+    w2T = max wMin' (if wFill' == 0 then wFixed' else w)
     div' b 0 = 0
     div' b d = div b d
 

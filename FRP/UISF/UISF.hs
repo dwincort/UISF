@@ -283,7 +283,7 @@ setSize (w,h) = setLayout $ makeLayout (Fixed w) (Fixed h)
 -- | Add space padding around a widget.
 pad  :: (Int, Int, Int, Int) -> UISF a b -> UISF a b
 pad args@(w,n,e,s) (UISF fl f) = UISF layout h where
-  layout ctx = let l = fl ctx in l { hFixed = hFixed l + w + e, vFixed = vFixed l + n + s }
+  layout ctx = let l = fl ctx in l { wFixed = wFixed l + w + e, hFixed = hFixed l + n + s }
   h (ctx, foc, t, e, b) = let ((x,y),(bw,bh)) = bounds ctx in do
     (db, foc', g, tp, c, uisf) <- f (ctx {bounds = ((x + w, y + n),(bw,bh))}, foc, t, e, b)
     return (db, foc', g, tp, c, pad args uisf)

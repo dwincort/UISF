@@ -36,6 +36,7 @@ module FRP.UISF
   , setLayout           -- :: Layout -> UISF a b -> UISF a b
   , makeLayout          -- :: LayoutType -> LayoutType -> Layout
   , LayoutType (..)     -- data LayoutType = Stretchy { minSize :: Int } | Fixed { fixedSize :: Int }
+  , Layout              -- data Layout = Layout {..}
   , getTime             -- :: UISF () Time
   , asyncUISFV          -- :: NFData b => Double -> Double -> Automaton a b -> UISF a ([b], Bool)
   , asyncUISFE          -- :: NFData b => Automaton a b -> UISF (SEvent a) (SEvent b)

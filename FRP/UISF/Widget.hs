@@ -158,8 +158,8 @@ title str (UISF fl f) = UISF layout h where
     withColor Black (text (x + 10, y) str) 
     // withColor' bg (block ((x + 8, y), (tw + 4, th))) 
     // box marked ((x, y + 8), (w, h - 16))
-  layout ctx = let l = fl ctx in l { hFixed = hFixed l + tw, vFixed = vFixed l + 36 }
-                                    -- ,minW = max (tw + 20) (minW l), minH = max 36 (minH l) }
+  layout ctx = let l = fl ctx in l { wFixed = wFixed l + tw, hFixed = hFixed l + 36 }
+                                    -- ,wMin = max (tw + 20) (wMin l), hMin = max 36 (hMin l) }
   h (CTX flow bbx@((x,y), (w,h)) cj,foc,t,inp, a) = 
     let ctx' = CTX flow ((x + 4, y + 20), (w - 8, h - 32)) cj
     in do (db, foc', g, cd, b, uisf) <- f (ctx', foc, t, inp, a)
