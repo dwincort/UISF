@@ -75,6 +75,15 @@ displayStr = mkWidget "" d (\v v' _ _ -> ((), v, v /= v')) draw
          // box pushed b 
          // withColor White (block b)
 
+-- | displayAll is a widget that takes any show-able value and displays it.
+displayAll :: Show a => UISF a ()
+displayAll = arr show >>> displayStr
+
+-- | displayKeylog is a widget that takes any show-able value (like that from a keylogger)
+--  and displays it in a displayOverflow
+displayKeylog :: Show a => UISF a ()
+displayKeylog = arr show >>> displayOverflow         
+
 -- | display is a widget that takes any show-able value and displays it.
 display :: Show a => UISF a ()
 display = arr show >>> displayStr
@@ -87,6 +96,136 @@ withDisplay sf = proc a -> do
   display -< b
   returnA -< b
 
+-- | displayField is a stretchable widget that shows the value of a signal of strings,
+--   and if there is overflow, the latter characters get cut off
+displayField :: UISF String ()
+displayField = mkWidget "" layout (\v v' _ _ -> ((), v, v /= v')) draw
+ where  
+   layout = makeLayout (Stretchy (8 + padding * 2)) (Stretchy (16 + padding * 2))
+   draw b@((x, y), (w, h)) _ s =
+     let n = (w - padding * 2) `div` 8 -- number of chars that can fit on a line
+         maxH = floor (fromIntegral (h - padding * 2) / fromIntegral 16) -- max height
+         dfRecur c = if c == maxH - 1 
+                       then dfRecurHelp c
+                         else dfRecurHelp c // dfRecur (c + 1)
+         dfRecurHelp c = withColor Black 
+           (text (x + padding, y + padding + c * 16)
+           (take n (drop (n * c) s)))
+     in (dfRecur 0)
+         // box pushed b
+         // withColor White (block b)
+
+-- | displayOverflow is the same as displayField, but when characters overflow
+--   the earlier characters are replaced
+displayOverflow :: UISF String ()
+displayOverflow = mkWidget "" layout (\v v' _ _ -> ((), v, v /= v')) draw
+ where  
+   layout = makeLayout (Stretchy (8 + padding * 2)) (Stretchy (16 + padding * 2))
+   draw b@((x, y), (w, h)) _ s =
+     let n = (w - padding * 2) `div` 8 -- number of chars that can fit on a line
+         maxH = floor (fromIntegral (h - padding * 2) / fromIntegral 16)
+         excess = (length s) - (maxH * n)  -- number of chars over the max
+         ofRecur c = if c == maxH - 1 
+                       then ofRecurHelp c
+                         else ofRecurHelp c // ofRecur (c + 1)
+         ofRecurHelp c = if excess 0 
+           then withColor Black 
+             (text (x + padding, y + padding + c * 16)
+             (take n (drop (n * c + excess) s)))
+           else withColor Black
+             (text (x + padding, y + padding + c * 16)
+             (take n (drop (n * c) s)))
+     in (ofRecur 0)
+         // box pushed b
+         // withColor White (block b)  
+
+----------------
+-- Keylogging --
+----------------
+-- | The keylog widgets allow the user to collect keyboard data at various
+--   levels of granularity. As of now, the
+--   keyloggers still do not collect data unless focused. It currently supports
+--   all special keys as well as regular keys.
+
+-- | The basic keylogger collects keystrokes and puts them into a string that
+--   separates each stroke by a space. This allows you to differentiate between
+--   special key presses and actually typing out the name of the SKey in all caps
+--   EX: "BACKSPACE" vs "B A C K S P A C E" vs "B  A  C  K  S  P  A  C  E"
+keylogBasic :: UISF a [Char]
+keylogBasic = mkWidget "" nullLayout comp (\_ _ _ -> nullGraphic)
+  where comp _ s _ e = (s', s', False)
+         where s' = case e of
+                     SKey BACKSPACE _ True -> s ++ "BACKSPACE "
+                     SKey DEL       _ True -> s ++ "DEL "
+                     SKey LEFT      _ True -> s ++ "LEFT "
+                     SKey RIGHT     _ True -> s ++ "RIGHT "
+                     SKey UP        _ True -> s ++ "UP "
+                     SKey DOWN      _ True -> s ++ "DOWN "
+                     SKey END       _ True -> s ++ "END "
+                     SKey HOME      _ True -> s ++ "HOME "
+                     SKey ENTER     _ True -> s ++ "ENTER "
+                     Key k _ True ->  s ++ [k, ' ']
+                     _ -> s
+
+-- | The toggle keylogger allows the user to set an "on" bit to determine whether
+--   or not the widget should be collecting data
+keylogToggle :: UISF Bool [Char]
+keylogToggle = mkWidget (False, "") nullLayout comp (\_ _ _ -> nullGraphic)
+  where comp a s _ e = if a == True then ((snd s'), s', False) else ((snd s), s, False)
+         where s' = case e of
+                     SKey BACKSPACE _ True -> (True, (snd s) ++ "BACKSPACE ")
+                     SKey DEL       _ True -> (True, (snd s) ++ "DEL ")
+                     SKey LEFT      _ True -> (True, (snd s) ++ "LEFT ")
+                     SKey RIGHT     _ True -> (True, (snd s) ++ "RIGHT ")
+                     SKey UP        _ True -> (True, (snd s) ++ "UP ")
+                     SKey DOWN      _ True -> (True, (snd s) ++ "DOWN ")
+                     SKey END       _ True -> (True, (snd s) ++ "END ")
+                     SKey HOME      _ True -> (True, (snd s) ++ "HOME ")
+                     SKey ENTER     _ True -> (True, (snd s) ++ "ENTER ")
+                     Key k _ True ->  (True, (snd s) ++ [k, ' '])
+                     _ -> s
+
+-- | The readable keylogger outputs a string without spaces between elements.
+--   This was not made with the toggle bit, as parsing this string is not safe, anyways.
+--   This widget acts like a textbox without a cursor that registers SKeys
+keylogReadable :: UISF a [Char]
+keylogReadable = mkWidget "" nullLayout comp (\_ _ _ -> nullGraphic)
+  where comp _ s _ e = (s', s', False) 
+         where s' = case e of
+                     SKey BACKSPACE _ True -> s ++ "BACKSPACE"
+                     SKey DEL       _ True -> s ++ "DEL"
+                     SKey LEFT      _ True -> s ++ "LEFT"
+                     SKey RIGHT     _ True -> s ++ "RIGHT"
+                     SKey UP        _ True -> s ++ "UP"
+                     SKey DOWN      _ True -> s ++ "DOWN"
+                     SKey END       _ True -> s ++ "END"
+                     SKey HOME      _ True -> s ++ "HOME"
+                     SKey ENTER     _ True -> s ++ "ENTER"
+                     Key k _ True ->  s ++ [k]
+                     _ -> s
+
+-- | This experimental keylogger takes in a tuple of an "on bit" and the current time
+--   and outputs a list of tuples of a tuple of the key pressed and the time since a
+--   key was last pressed and the total time elapsed.
+keylogExp :: UISF (Bool, Time) (Bool, [([Char], Time)], Time)
+keylogExp = mkWidget (False, [], 0) nullLayout comp (\_ _ _ -> nullGraphic)
+  where comp (on, t') s@(_, l, t) _ e = if on == True then (s', s', False) else (s, s, False)
+         where s' = case e of
+                     SKey BACKSPACE _ True -> (True, l ++ [("BACKSPACE", t' - t )], t')
+                     SKey DEL       _ True -> (True, l ++ [("DEL", t' - t )], t')
+                     SKey LEFT      _ True -> (True, l ++ [("LEFT", t' - t )], t')
+                     SKey RIGHT     _ True -> (True, l ++ [("RIGHT", t' - t )], t')
+                     SKey UP        _ True -> (True, l ++ [("UP", t' - t )], t')
+                     SKey DOWN      _ True -> (True, l ++ [("DOWN", t' - t )], t')
+                     SKey END       _ True -> (True, l ++ [("END", t' - t )], t')
+                     SKey HOME      _ True -> (True, l ++ [("HOME", t' - t )], t')
+                     SKey ENTER     _ True -> (True, l ++ [("ENTER", t' - t )], t')
+                     Key  k         _ True -> (True, l ++ [([k], t' - t)], t')
+                     _                     -> s
+
+--unsafe and really bad code used to format the output of keylogExp better
+sel2 (_, elt2, _) = elt2
+sel3 (_, _, elt3) = elt3
 
 --------------
 -- Text Box --
@@ -180,11 +319,21 @@ title str (UISF fl f) = UISF layout h where
 button :: String -> UISF () Bool
 button = genButton False
 
+-- | This version of the button is used for the keylogger so that SPACE
+--   and ENTER do not stop the logging.
+keylogButton :: String -> UISF () Bool
+keylogButton = genButton' False
+
 -- | The sticky button, on the other hand, once 
 -- pressed, remains depressed until is is clicked again to be released.
 -- Thus, it looks like a button, but it behaves more like a checkbox.
 stickyButton :: String -> UISF () Bool
 stickyButton = genButton True
+
+-- | This version of the button is used for the keylogger so that SPACE
+--   and ENTER do not stop the logging.
+keylogStickyButton :: String -> UISF () Bool
+keylogStickyButton = genButton' True
 
 -- This is used to create the buttons.
 genButton :: Bool -> String -> UISF () Bool
@@ -219,6 +368,34 @@ genButton sticky l = focusable $
           Key ' ' _ True -> not s
           _ -> s
 
+ -- This is used to create the keylogging buttons
+genButton' :: Bool -> String -> UISF () Bool
+genButton' sticky l = focusable $ 
+  mkWidget False d (if sticky then processSticky else processRegular) draw
+    where
+      (tw, th) = (8 * length l, 16) 
+      (minw, minh) = (tw + padding * 2, th + padding * 2)
+      d = makeLayout (Stretchy minw) (Fixed minh)
+      draw b@((x,y), (w,h)) inFocus down = 
+        let x' = x + (w - tw) `div` 2 + if down then 0 else -1
+            y' = y + (h - th) `div` 2 + if down then 0 else -1
+        in withColor Black (text (x', y') l) 
+           // whenG inFocus (box marked b)
+           // box (if down then pushed else popped) b
+      processRegular _ s b evt = (s', s', s /= s')
+        where 
+          s' = case evt of
+            Button pt True down | pt `inside` b -> case (s, down) of
+              (False, True) -> True
+              (True, False) -> False
+              _ -> s
+            MouseMove pt       -> (pt `inside` b) && s
+            _ -> s
+      processSticky _ s b evt = (s', s', s /= s')
+        where 
+          s' = case evt of
+            Button pt True True | pt `inside` b -> not s
+            _ -> s
 
 ---------------
 -- Check Box --
