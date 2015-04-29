@@ -112,8 +112,9 @@ edge = proc b -> do
 --   to get the next value, and so on.
 accum :: ArrowCircuit a => b -> a (SEvent (b -> b)) b
 accum x = proc f -> do
-    rec b <- delay x -< maybe b ($b) f
-    returnA -< b
+    rec b <- delay x -< b'
+        let b' = maybe b ($b) f
+    returnA -< b'
 
 -- | The signal function unique will produce an event each time its input 
 --   signal changes.
