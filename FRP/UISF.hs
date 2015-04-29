@@ -25,6 +25,7 @@ module FRP.UISF
   , Color (..)          -- data Color = Black | Blue | Green | Cyan | Red | Magenta | Yellow | White
   , histogram           -- :: RealFrac a => Layout -> UISF (Event [a]) ()
   , histogramWithScale  -- :: RealFrac a => Layout -> UISF (SEvent [(a,String)]) ()
+  , scrollable          -- :: Layout -> Dimension -> UISF a b -> UISF a b
   , listbox             -- :: (Eq a, Show a) => UISF ([a], Int) Int
   , canvas              -- :: Dimension -> UISF (Event Graphic) ()
   , canvas'             -- :: Layout -> (a -> Dimension -> Graphic) -> UISF (Event a) ()

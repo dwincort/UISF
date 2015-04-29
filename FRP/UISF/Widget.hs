@@ -101,10 +101,9 @@ withDisplay sf = proc a -> do
 -- left, right, end, home, delete, and backspace special keys.
 textbox :: UISF String String
 textbox = focusable $ 
-  conjoin $ proc s -> do
+  conjoin $ withCTX $ proc (ctx,s) -> do
     inFocus <- isInFocus -< ()
     k <- getEvents -< ()
-    ctx <- getCTX -< ()
     rec let (s', i) = if inFocus then update s iPrev ctx k else (s, iPrev)
         iPrev <- delay 0 -< i
     displayStr -< seq i s'
@@ -469,6 +468,52 @@ histogramWithScale layout =
 
 
 ------------------------------------------------------------
+-- *** Virtual Real Estate
+------------------------------------------------------------
+
+-- | The scrollable function puts sub-widgets into a virtual canvas that 
+--  can be scrolled using sliders that appear when necessary.  The first 
+--  argument is the actual layout of the scrollable area, and the second 
+--  argument is the size of the virtual canvas.
+scrollable :: Layout -> Dimension -> UISF a b -> UISF a b
+scrollable layout (w,h) sf = withCTX $ proc ((CTX flow (asdf, (w',h')) _),a) -> do
+  (| bottomUp (do
+    ws <- if w > w' then hSlider (0,1) 0 -< ()
+                    else returnA -< 0
+    (| rightLeft (do
+      hs <- if h > h' then vSlider (0,1) 0 -< ()
+                      else returnA -< 0
+      transform sf -< (flow, ws, hs, a) ) |) ) |)
+  where
+    transform (UISF fl f) = UISF (const layout) fun where
+      fun (CTX flow' bbx'@((x',y'), (w',h')) cj',foc,t,inp, (flow, ws, hs, a)) = do
+        (db, foc', g, cd, b, uisf) <- f (ctx', foc, t, update inp, a)
+        return (db, foc', restrict g, cd, b, transform uisf)
+          where
+            xoff = max 0 $ round $ (fromIntegral (w-w')) * ws
+            yoff = max 0 $ round $ (fromIntegral (h-h')) * hs
+            ctx' = CTX flow ((x',y'), (w,h)) cj'
+            update (MouseMove p) = MouseMove $ adjustPoint p bbx' (w,h) (xoff,yoff)
+            update (Button p@(x,y) isLeft isDown) = Button (adjustPoint p bbx' (w,h) (xoff,yoff)) isLeft isDown
+            update e = e
+            restrict g = scissorGraphic bbx' $ translateGraphic (0-xoff,0-yoff) g
+            compareRange :: Ord a => a -> (a,a) -> Ordering
+            compareRange x (l,u) = case (x < l, x > u) of
+              (True, _) -> LT
+              (False, True) -> GT
+              _ -> EQ
+            adjustPoint (x,y) ((x',y'), (w',h')) (w,h) (xoff,yoff) = (xu,yu) where
+              xu = case compareRange x (x', x'+w') of
+                      LT -> x - xoff
+                      EQ -> x + xoff
+                      GT -> x + w - w'
+              yu = case compareRange y (y', y'+h') of
+                      LT -> y - yoff
+                      EQ -> y + yoff
+                      GT -> y + h - h'
+
+
+------------------------------------------------------------
 -- * Widget Builders
 ------------------------------------------------------------
 
@@ -514,7 +559,7 @@ mkWidget i layout comp draw = proc a -> do
         where
           rect = bounds ctx
           (b, s', db) = comp a s rect e
-          g = scissorGraphic rect $ draw rect (snd f == HasFocus) s'
+          g = {-scissorGraphic rect $ -} draw rect (snd f == HasFocus) s'
 
 -- | Occasionally, one may want to display a non-interactive graphic in 
 -- the UI.  'mkBasicWidget' facilitates this.  It takes a layout and a 

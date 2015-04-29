@@ -17,7 +17,7 @@ module FRP.UISF.UISF (
     uisfSource, uisfSink, uisfPipe,
     uisfSourceE, uisfSinkE, uisfPipeE,
     -- * UISF Getters
-    getTime, getCTX, getEvents, getFocusData, addTerminationProc, getMousePosition, 
+    getTime, getCTX, withCTX, getEvents, getFocusData, addTerminationProc, getMousePosition, 
     -- * UISF constructors, transformers, and converters
     mkUISF, 
     -- * UISF Lifting
@@ -164,9 +164,19 @@ uisfPipeE = evMap . uisfPipe
 getTime      :: UISF () Time
 getTime      = mkUISF nullLayout (\(_,f,t,_,_) -> (False, f, nullGraphic, nullTP, t))
 
+{-# DEPRECATED getCTX "Use withCTX instead" #-}
 -- | Get the context signal from a UISF.
+--   This has been deprecated in favor of withCTX as it can provide 
+--   misleading information.
 getCTX       :: UISF () CTX
 getCTX       = mkUISF nullLayout (\(c,f,_,_,_) -> (False, f, nullGraphic, nullTP, c))
+
+-- | Provide the context signal to the UISF.
+withCTX :: UISF (CTX,a) b -> UISF a b
+withCTX (UISF l f) = UISF l h where
+  h (ctx, foc, t, e, b) = do
+    (db, foc', g, tp, c, uisf) <- f (ctx, foc, t, e, (ctx,b))
+    return (db, foc', g, tp, c, withCTX uisf)
 
 -- | Get the UIEvent signal from a UISF.
 getEvents    :: UISF () UIEvent
@@ -328,7 +338,7 @@ runUI  :: UIParams -> UISF () () -> IO ()
 runUI p sf = do
     tref <- newIORef Nothing
     uiInitialize p
-    w <- openWindowEx (uiTitle p) (Just (0,0)) (Just $ uiSize p) drawBufferedGraphic
+    w <- openWindow (uiTitle p) (uiSize p)
     finally (go tref w) (terminate tref w)
   where
     terminate tref w = do
