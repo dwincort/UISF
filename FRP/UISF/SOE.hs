@@ -407,9 +407,19 @@ scissorGraphic ((x,y), (w,h)) (Graphic g) = Graphic $ do
     (_,windowY) <- getMainWindowSize
     let [x', y', w', h'] = map fromIntegral [x, windowY-y-h, w, h]
     oldScissor <- GL.get GL.scissor
-    GL.scissor $= Just (GL.Position x' y', GL.Size w' h')
+    let ((x'',y''),(w'',h'')) = maybe ((x',y'),(w',h'))
+            (\(GL.Position a b, GL.Size c d) -> intersect ((x',y'),(w',h')) ((a,b),(c,d))) oldScissor
+    -- FIXME: This intersection of scissors may not be right, but I'm not sure what's better
+    GL.scissor $= Just (GL.Position x'' y'', GL.Size w'' h'')
     g
     GL.scissor $= oldScissor
+  where
+    intersect ((x,y),(w,h)) ((x',y'),(w',h')) = ((x'',y''),(w'',h'')) where
+      x'' = min x x'
+      y'' = min y y'
+      w'' = max 0 $ (min (x+w) (x'+w')) - x''
+      h'' = max 0 $ (min (y+h) (y'+h')) - y''
+
 
 
 -------------------
