@@ -11,9 +11,9 @@ module FRP.UISF
   , displayStr          -- :: UISF String ()
   , display             -- :: Show a => UISF a ()
   , withDisplay         -- :: Show b => UISF a b -> UISF a b
-  , textbox             -- :: UISF String String
-  , textboxE            -- :: String -> UISF (Event String) String
+  , textbox             -- :: String -> UISF (Event String) String
   , title               -- :: String -> UISF a b -> UISF a b
+  , spacer              -- :: UISF a a
   , button              -- :: String -> UISF () Bool
   , stickyButton        -- :: String -> UISF () Bool
   , checkbox            -- :: String -> Bool -> UISF () Bool

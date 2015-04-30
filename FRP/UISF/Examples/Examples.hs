@@ -30,6 +30,7 @@ buttonEx = title "Buttons" $ topDown $ proc _ -> do
             (Nothing, Just _) -> v-1
             _ -> v)
   display -< v
+  spacer -< ()
 
 -- | This example shows off the 'checkbox' widgets.
 checkboxEx :: UISF () ()
@@ -39,6 +40,7 @@ checkboxEx = title "Checkboxes" $ topDown $ proc _ -> do
   z <- checkbox "Wednesday" True -< ()
   let v = bin x ++ bin y ++ bin z
   displayStr -< v
+  spacer -< ()
   where
     bin True = "1"
     bin False = "0"
@@ -53,41 +55,39 @@ radioButtonEx = title "Radio Buttons" $ topDown $ radio list 0 >>> arr (list!!) 
 --   this case).
 shoppinglist :: UISF () ()
 shoppinglist = title "Shopping List" $ topDown $ proc _ -> do
-  a <- title "apples"  $ hiSlider 1 (0,10) 3 -< ()
-  b <- title "bananas" $ hiSlider 1 (0,10) 7 -< () 
-  title "total" $ display -< (a + b)
+  a <- spacer <<< title "apples"  (hiSlider 1 (0,10) 3) -< ()
+  b <- spacer <<< title "bananas" (hiSlider 1 (0,10) 7) -< () 
+  title "total" display -< (a + b)
 
 -- | This example shows off both vertical sliders as well as the 'canvas' 
 -- widget.  The canvas widget can be used to easily create custom graphics 
 -- in the GUI.  Here, it is used to make a color swatch that is 
 -- controllable with RGB values by the sliders.
 colorDemo :: UISF () ()
-colorDemo = setSize (300, 220) $ title "Color" $ pad (4,0,4,0) $ leftRight $ proc _ -> do
+colorDemo = title "Color" $ leftRight $ proc _ -> do
   r <- newColorSlider "R" -< ()
   g <- newColorSlider "G" -< ()
   b <- newColorSlider "B" -< ()
   changed <- unique -< (r,g,b)
-  let rect = withColor' (rgb r g b) (box ((0,0),d))
-  pad (4,8,0,0) $ canvas d -< fmap (const rect) changed
+  pad (4,8,0,0) $ canvas' layout rect -< changed
   where
-    d = (170,170)
+    layout = makeLayout (Stretchy 10) (Stretchy 10)
     newColorSlider l = title l $ topDown $ proc _ -> do
       v <- viSlider 16 (0,255) 0 -< ()
-      _ <- displayStr -< showHex v ""
+      _ <- setSize (22,22) displayStr -< showHex v ""
       returnA -< v
     box ((x,y), (w, h)) = polygon [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
+    rect (r,g,b) d = withColor' (rgb r g b) (box ((0,0),d))
 
--- | This example shows off the 'textboxE' widget.  Text can be typed in, and 
+-- | This example shows off the 'textbox' widget.  Text can be typed in, and 
 -- that text is transferred to the 'display' widget below when the button 
 -- is pressed.
 textboxdemo :: UISF () ()
-textboxdemo = setLayout (makeLayout (Stretchy 150) (Fixed 100)) $ 
-                title "Saving Text" $ topDown $ proc _ -> do
-  str <- leftRight $ label "Text: " >>> textboxE "" -< Nothing
+textboxdemo = title "Saving Text" $ topDown $ proc _ -> do
+  str <- leftRight $ label "Text: " >>> textbox "" -< Nothing
   b <- button "Save text to below" -< ()
   rec str' <- delay "" -< if b then str else str'
   leftRight $ label "Saved value: " >>> displayStr -< str' 
-  returnA -< ()
 
 -- | This is the main demo that incorporates all of the other examples 
 -- together.  In addition to demonstrating how 
@@ -97,5 +97,5 @@ textboxdemo = setLayout (makeLayout (Stretchy 150) (Fixed 100)) $
 main :: IO ()
 main = runUI (defaultUIParams {uiSize=(500, 500)}) $ 
   (leftRight $ (bottomUp $ timeEx >>> buttonEx) >>> (topDown $ checkboxEx) >>> radioButtonEx) >>>
-  (leftRight $ shoppinglist >>> colorDemo) >>> textboxdemo >>> arr id
+  (leftRight $ shoppinglist >>> colorDemo) >>> textboxdemo
 

@@ -82,7 +82,7 @@ bidirectional dataflow, the first of which is fairly easy with
 standard Haskell, and the second of which is simple with arrowized 
 FRP.
 
-The textboxE function takes a starting String to create a widget that 
+The textbox function takes a starting String to create a widget that 
 accepts an Event String as input and produces String as output.  We use 
 the "unique" transformer to transform this output into events that only 
 update when a change occurs.
@@ -98,9 +98,9 @@ so we do this twice, once for each textbox.
 
 > tempCovertSF :: UISF () ()
 > tempCovertSF = leftRight $ proc _ -> do
->   rec c <- unique <<< textboxE "" -< updateC
+>   rec c <- unique <<< textbox "" -< updateC
 >       label "degrees Celsius = " -< ()
->       f <- unique <<< textboxE "" -< updateF
+>       f <- unique <<< textbox "" -< updateF
 >       label "degrees Fahrenheit" -< ()
 >       let cNum = join $ fmap (readMaybe :: String -> Maybe Double) c
 >           fNum = join $ fmap (readMaybe :: String -> Maybe Double) f
@@ -139,7 +139,7 @@ indicating that the entry is invalid.
 
 > timeInputTextbox :: TimeLocale -> String -> String -> UISF () (SEvent UTCTime)
 > timeInputTextbox tl format start = leftRight $ proc _ -> do
->     t <- textboxE start -< Nothing
+>     t <- textbox start -< Nothing
 >     let ret = readTimeMaybe tl format t
 >     case ret of
 >       Just _ -> returnA -< ret
@@ -150,7 +150,7 @@ indicating that the entry is invalid.
 >                                       [(x, "")] -> Just x
 >                                       _ -> Nothing
 
-Note the use of the delay with the textboxE -- we need this because we 
+Note the use of the delay with the textbox -- we need this because we 
 will use the value t to determine whether to insert the label or not.
 
 Note the clever use of unique and resetText.  We would like the display 
@@ -309,7 +309,7 @@ to define a "leftRight" layout portion.
 > crudSF :: Database NameEntry -> UISF () ()
 > crudSF initnamesDB = proc _ -> do
 >   rec
->     fStr <- leftRight $ label "Filter text: " >>> textboxE "" -< Nothing
+>     fStr <- leftRight $ label "Filter text: " >>> textbox "" -< Nothing
 >     (i, db, fdb, nameData) <- (| leftRight (do
 
 This leftRight portion will have a listbox on the left and then a 
@@ -323,8 +323,8 @@ topDown portion on the right that will be for entering name data.
 We add two textboxes for the first name and surname strings and 
 then set them to update whenever one of the listbox items is selected.
 
->             rec nameStr <- leftRight $ label "Name:    " >>> textboxE "" -< nameStr'
->                 surnStr <- leftRight $ label "Surname: " >>> textboxE "" -< surnStr'
+>             rec nameStr <- leftRight $ label "Name:    " >>> textbox "" -< nameStr'
+>                 surnStr <- leftRight $ label "Surname: " >>> textbox "" -< surnStr'
 >                 iUpdate <- unique -< i
 >                 let nameStr' = fmap (const $ firstName ((filter (filterFun fStr) db') `at` i')) iUpdate
 >                     surnStr' = fmap (const $ lastName  ((filter (filterFun fStr) db') `at` i')) iUpdate
@@ -498,7 +498,7 @@ the adjustment slider as a widget to the bottom of the current frame.
 The adjustment slider should only appear after a right click and before 
 the cancel or set buttons are pressed -- we use an 'accum' to achieve this.
 
->     isAdjustActive <- accum False -< fmap (const . const False) majorU 
+>     isAdjustActive <- accum False <<< delay Nothing -< fmap (const . const False) majorU 
 >                              `mplus` fmap (const . const False) cancel
 >                              `mplus` fmap (const . const True) rightClicks
 >     adjustC <- accum ((0,0),0) -< fmap const rightClicks

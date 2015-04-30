@@ -24,7 +24,7 @@ import FRP.UISF hiding (accum)
 
 -- We make our own special type of button for inputting hand information, 
 -- so we import a few things directly from Widget and SOE.
-import FRP.UISF.Widget (cyclebox', padding, (//), whenG, box, marked, pushed, popped)
+import FRP.UISF.Widget (cycleboxS, padding, (//), whenG, box, marked, pushed, popped)
 import FRP.UISF.SOE (text, withColor)
 
 import Data.List (delete, foldl', group)
@@ -113,7 +113,7 @@ pinochleSF = proc _ -> do
     --display -< shortShow hand
     leftRight $ label "Number of cards:" >>> setSize (40,22) display -< handLength hand
     leftRight $ label "Total meld =" >>> displayStr -< show (sum (map snd3 meld)) ++ ": " ++ show (map fst3 meld)
-    kittenSizeStr <- leftRight $ label "Kitty size =" >>> setSize (40,22) (textboxE "2") -< case (updateEv, handLength hand) of
+    kittenSizeStr <- leftRight $ label "Kitty size =" >>> setSize (40,22) (textbox "2") -< case (updateEv, handLength hand) of
             (Just _, 11) -> Just $ show 4
             (Just _, 15) -> Just $ show 3
             _ -> Nothing
@@ -243,7 +243,7 @@ handSelector (s:ss) ns = proc ev -> do
 -- It takes as argument the names of the cards to select and a dynamic 
 -- "clear" event.
 cardSelector :: String -> UISF (SEvent ()) Int
-cardSelector str = arr (fmap (const 0)) >>> cyclebox' d lst 0 where
+cardSelector str = arr (fmap (const 0)) >>> cycleboxS d lst 0 where
     (tw, th) = (8 * (length str + 3), 16) 
     (minw, minh) = (tw + padding * 2, th + padding * 2)
     d = makeLayout (Stretchy minw) (Fixed minh)

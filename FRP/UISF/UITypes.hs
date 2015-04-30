@@ -123,10 +123,10 @@ type Rect = (Point, Dimension)
 makeLayout :: LayoutType  -- ^ Horizontal Layout information
            -> LayoutType  -- ^ Vertical Layout information
            -> Layout
-makeLayout (Fixed w) (Fixed h) = Layout 0 0 w h 0 0
-makeLayout (Stretchy wMin) (Fixed h) = Layout 1 0 0 h wMin 0
-makeLayout (Fixed w) (Stretchy hMin) = Layout 0 1 w 0 0 hMin
-makeLayout (Stretchy wMin) (Stretchy hMin) = Layout 1 1 0 0 wMin hMin
+makeLayout (Fixed w) (Fixed h) = Layout 0 0 w h 0 0 0
+makeLayout (Stretchy wMin) (Fixed h) = Layout 1 0 0 h wMin 0 0
+makeLayout (Fixed w) (Stretchy hMin) = Layout 0 1 w 0 0 hMin 0
+makeLayout (Stretchy wMin) (Stretchy hMin) = Layout 1 1 0 0 wMin hMin 0
 
 -- | A dimension can either be:
 data LayoutType = 
@@ -137,13 +137,13 @@ data LayoutType =
 
 -- | The null layout is useful for \"widgets\" that do not appear or 
 --   take up space on the screen.
-nullLayout = Layout 0 0 0 0 0 0
+nullLayout = Layout 0 0 0 0 0 0 0
 
 
 -- | More complicated layouts can be manually constructed with direct 
 -- access to the Layout data type.
 --
--- 1. wFill and hFill specify how much stretching space (in comparative 
+-- 1. wStretch and hStretch specify how much stretching space (in comparative 
 --    units) in the width and height should be allocated for this widget.
 -- 
 -- 2. wFixed and hFixed specify how much non-stretching space (in pixels) 
@@ -151,14 +151,18 @@ nullLayout = Layout 0 0 0 0 0 0
 -- 
 -- 3. wMin and hMin specify minimum values (in pixels) of width and height 
 --    for the widget's stretchy dimensions.
+--
+-- 4. lFill specifies how much expanding space (in comparative units) this 
+--    widget should fill out in excess space that would otherwise be unused.
 
 data Layout = Layout
-  { wFill  :: Int
-  , hFill  :: Int
-  , wFixed :: Int
-  , hFixed :: Int
-  , wMin   :: Int
-  , hMin   :: Int
+  { wStretch :: Int
+  , hStretch :: Int
+  , wFixed   :: Int
+  , hFixed   :: Int
+  , wMin     :: Int
+  , hMin     :: Int
+  , lFill    :: Int
   } deriving (Eq, Show)
 
 
@@ -174,8 +178,8 @@ data Layout = Layout
 
 divideCTX :: CTX -> Layout -> Layout -> (CTX, CTX)
 divideCTX ctx@(CTX a ((x, y), (w, h)) c) 
-          ~(Layout wFill  hFill  wFixed  hFixed  wMin  hMin) 
-          ~(Layout wFill' hFill' wFixed' hFixed' wMin' hMin') =
+          ~(Layout wStretch  hStretch  wFixed  hFixed  wMin  hMin  lFill) 
+          ~(Layout wStretch' hStretch' wFixed' hFixed' wMin' hMin' lFill') =
   if c then (ctx, ctx) else
   case a of
     TopDown   -> (CTX a ((x, y),                 (w1T, h1T)) c, 
@@ -187,25 +191,16 @@ divideCTX ctx@(CTX a ((x, y), (w, h)) c)
     RightLeft -> (CTX a ((x + w - w1L, y),       (w1L, h1L)) c, 
                   CTX a ((x + w - w1L - w2L, y), (w2L, h2L)) c)
   where
-    -- The commented out code here forces the contexts to match exactly 
-    -- what the layout requests.  The code in place matches to the first 
-    -- layout and then gives the rest of the context to the second.
-    -- A more robust design may require a special "filler" layout that 
-    -- is not stretchy but will accept any leftover pixels.  We could 
-    -- then have a filler widget that is essentially (arr id) with this 
-    -- special layout.
-    wportion fill = div' (fill * (w - wFixed - wFixed')) (wFill + wFill')
-    (w1L,w2L) = let w1 = min w $ wFixed  + max wMin  (wportion wFill)
-                    w2 = wFixed' + max wMin' (wportion wFill')
-                in if w1+w2 > w then (w1, w-w1) else (w1, w2)
-    h1L = max hMin  (if hFill  == 0 then hFixed  else h)
-    h2L = max hMin' (if hFill' == 0 then hFixed' else h)
-    hportion fill = div' (fill * (h - hFixed - hFixed')) (hFill + hFill')
-    (h1T,h2T) = let h1 = min h $ hFixed  + max hMin  (hportion hFill)
-                    h2 = hFixed' + max hMin' (hportion hFill')
-                in if h1+h2 > h then (h1, h-h1) else (h1, h2)
-    w1T = max wMin  (if wFill  == 0 then wFixed  else w)
-    w2T = max wMin' (if wFill' == 0 then wFixed' else w)
+    (w1L,w2L,w1T,w2T) = calc w wStretch wStretch' wFixed wFixed' wMin wMin' lFill lFill'
+    (h1T,h2T,h1L,h2L) = calc h hStretch hStretch' hFixed hFixed' hMin hMin' lFill lFill'
+    calc len stretch stretch' fixed fixed' lmin lmin' fill fill' = (st1, st2, fi1, fi2) where
+      portion s = div' (s * (len - fixed - fixed')) (stretch + stretch')
+      (st1,st2) = let u = min len $ fixed  + max lmin  (portion stretch)
+                      v =           fixed' + max lmin' (portion stretch')
+                      por f = div' (f * (len - u - v)) (fill + fill')
+                  in if u+v > len then (u, len-u) else (u + por fill, v + por fill')
+      fi1 = if fill  > 0 then len else max lmin  (if stretch  == 0 then fixed  else len)
+      fi2 = if fill' > 0 then len else max lmin' (if stretch' == 0 then fixed' else len)
     div' b 0 = 0
     div' b d = div b d
 
@@ -216,15 +211,16 @@ divideCTX ctx@(CTX a ((x, y), (w, h)) c)
 -- | Merge two layouts into one.
 
 mergeLayout :: Flow -> Layout -> Layout -> Layout
-mergeLayout a (Layout n m u v minw minh) (Layout n' m' u' v' minw' minh') = 
+mergeLayout a (Layout n m u v minw minh lFill) (Layout n' m' u' v' minw' minh' lFill') = 
   case a of
-    TopDown   -> Layout (max' n n') (m + m') (max u u') (v + v') (max minw minw') (minh + minh')
-    BottomUp  -> Layout (max' n n') (m + m') (max u u') (v + v') (max minw minw') (minh + minh')
-    LeftRight -> Layout (n + n') (max' m m') (u + u') (max v v') (minw + minw') (max minh minh')
-    RightLeft -> Layout (n + n') (max' m m') (u + u') (max v v') (minw + minw') (max minh minh')
+    TopDown   -> Layout (max' n n') (m + m') (max u u') (v + v') (max minw minw') (minh + minh') lFill''
+    BottomUp  -> Layout (max' n n') (m + m') (max u u') (v + v') (max minw minw') (minh + minh') lFill''
+    LeftRight -> Layout (n + n') (max' m m') (u + u') (max v v') (minw + minw') (max minh minh') lFill''
+    RightLeft -> Layout (n + n') (max' m m') (u + u') (max v v') (minw + minw') (max minh minh') lFill''
   where
     max' 0 0 = 0
     max' _ _ = 1
+    lFill'' = lFill + lFill'
 
 
 ------------------------------------------------------------

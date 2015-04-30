@@ -29,7 +29,7 @@ spacer l = setLayout l $ arr id
 textEntryField :: String -> UISF () (SEvent String)
 textEntryField labl = rightLeft $ focusable $ proc () -> do
   b <- edge <<< button labl -< ()
-  t <- textboxE "" <<< delay Nothing -< fmap (const "") b
+  t <- textbox "" <<< delay Nothing -< fmap (const "") b
   returnA -< fmap (const t) b
 
 uisf :: MindMap -> UISF () ()
