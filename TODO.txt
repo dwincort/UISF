@@ -10,8 +10,6 @@ UISF future features/changes
 - make a cabal "test-suite" (or second library or something like that?) that compiles the various example files.
 - Can I make a test version of runUI that, instead of actually running the UISF, runs it for a few ticks with interesting click/keystroke events and makes sure that the GUI being tested doesn't blackhole?  Are there other ways to auto-test GUIs?
 - mkBasicWidget should be (a -> b) and its draw routine should take either a or b or both.  Then, I can make a dynamic label that prints its input.  Or maybe not.
-- histogram probably shouldn't normalize internally -- what happens if the input is all 0?  Instead, we *could* apply bounding, but basically, let's leave it up to the caller to normalize.  This way, we can get proper 0s and 1s if we want them.
-- histogramWithScale's sidebuffer value should be derived from the first and last elements of the scale to avoid them being cut off
 - Add settability, but also a way to disable settability (for performance reasons).
 - Consider adding a refresh signal of some sort that is automatically provided to widgets that just "re-emerge" from an unused branch of arrow choice.  That way, if they were left in an odd state when the switch happens, they can be normal when they come back.
 - Make a version of asyncE that can perform an IO computation.

@@ -461,22 +461,21 @@ realtimeGraph layout hist color = arr ((),) >>> first getTime >>>
 -- Histogram --
 ---------------
 -- | The histogram widget creates a histogram of the input map.  It assumes 
--- that the elements are to be displayed linearly and evenly spaced.
+-- that the elements are to be displayed linearly and evenly spaced.  Also, 
+-- the values to be plotted must be between 0 and 1 (inclusive).
 histogram :: RealFrac a => Layout -> UISF (SEvent [a]) ()
 histogram layout = 
   mkWidget Nothing layout process draw
   where process Nothing Nothing  _ _ = ((), Nothing, False)
         process Nothing (Just a) _ _ = ((), Just a, False) --TODO check if this should be True
         process (Just a) _       _ _ = ((), Just a, True)
-        draw (xy, (w, h)) _ = translateGraphic xy . mymap (polyline . mkPts)
+        draw (xy, (w, h)) _ (Just lst@(_:_)) = translateGraphic xy $ polyline $ mkPts lst
           where mkPts l  = zip (reverse $ xs $ length l) (map adjust . normalize . reverse $ l)
                 xs n     = let k = n-1 in 0 : map (\x -> truncate $ fromIntegral (w*x) / fromIntegral k) [1..k]
                 adjust i = buffer + truncate (fromIntegral (h - 2*buffer) * (1 - i))
-                normalize lst = map (/m) lst where m = maximum lst
-                buffer = truncate $ fromIntegral h / 10
-                mymap :: ([a] -> Graphic) -> SEvent [a] -> Graphic
-                mymap f (Just lst@(_:_)) = f lst
-                mymap _ _ = nullGraphic
+                normalize lst = map (max 0 . min 1) lst
+                buffer = min 12 $ truncate $ fromIntegral h / 10
+        draw _ _ _ = nullGraphic
 
 -- | The histogramWithScale widget creates a histogram and an x coordinate scale.
 histogramWithScale :: RealFrac a => Layout -> UISF (SEvent [(a,String)]) ()
@@ -485,21 +484,21 @@ histogramWithScale layout =
   where process Nothing Nothing  _ _ = ((), Nothing, False)
         process Nothing (Just a) _ _ = ((), Just a, False) --TODO check if this should be True
         process (Just a) _       _ _ = ((), Just a, True)
-        draw (xy, (w, h)) _ = mymap (polyline . mkPts) mkScale
-          where mkPts l  = zip (reverse $ xs $ length l) (map adjust . normalize . reverse $ l)
+        draw (xy, (w, h)) _ (Just lst@(_:_)) = translateGraphic xy $ mkScale strLst // (polyline $ mkPts aLst)
+          where (aLst, strLst) = unzip lst
+                mkPts l  = zip (reverse $ xs $ length l) (map adjust . normalize . reverse $ l)
                 xs n     = let k  = n-1
-                               w' = w - sidebuffer * 2
-                           in sidebuffer : map (\x -> sidebuffer + (truncate $ fromIntegral (w'*x) / fromIntegral k)) [1..k]
-                adjust i = bottombuffer + truncate (fromIntegral (h - topbuffer - bottombuffer) * (1 - i))
-                normalize lst = map (/m) lst where m = maximum lst
-                topbuffer = truncate $ fromIntegral h / 10
-                bottombuffer = max 20 topbuffer
-                sidebuffer = 20
-                mkScale l = foldl (\pg (x,s) -> translateGraphic xy (withColor Black (text (x-((8*length s) `div` 2), h-12) s)) // pg) 
+                               w' = w - leftbuffer - rightbuffer
+                           in leftbuffer : map (\x -> leftbuffer + (truncate $ fromIntegral (w'*x) / fromIntegral k)) [1..k]
+                adjust i = topbuffer + truncate (fromIntegral (h - topbuffer - bottombuffer) * (1 - i))
+                normalize lst = map (max 0 . min 1) lst
+                topbuffer = min 12 $ truncate $ fromIntegral h / 10
+                bottombuffer = 20
+                leftbuffer = 4 + (8 * length (head strLst)) `div` 2
+                rightbuffer = 4 + (8 * length (last strLst)) `div` 2
+                mkScale l = foldl (\pg (x,s) -> withColor Black (text (x-((8*length s) `div` 2), h-16) s) // pg) 
                                   nullGraphic $ zip (xs $ length l) l
-                mymap :: ([a] -> Graphic) -> ([String] -> Graphic) -> SEvent [(a,String)] -> Graphic
-                mymap f g (Just lst@(_:_)) = let (fl,gl) = unzip lst in g gl // translateGraphic xy (f fl)
-                mymap _ _ _ = nullGraphic
+        draw _ _ _ = nullGraphic
 
 
 ------------------------------------------------------------

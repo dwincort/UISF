@@ -262,9 +262,10 @@ cardSelector str = arr (fmap (const 0)) >>> cycleboxS d lst 0 where
 -------------------------------------------------------------
 
 prepHistogramData :: Map.Map Int Int -> [(Double, String)]
-prepHistogramData m = map f [0..x] where
+prepHistogramData m = normalize $ map f [0..x] where
   x = maybe 0 (fst . fst) $ Map.maxViewWithKey m -- get max meld value (the max key in the map)
   f i = (fromIntegral $ fromMaybe 0 $ Map.lookup i m, show i) -- return pair of count and meld value (in String form)
+  normalize xs = map (\(x,s) -> (x/m,s)) xs where m = maximum (map fst xs)
 
 
 -- this only works for the ints in the list between 0 and 2 inclusive.
