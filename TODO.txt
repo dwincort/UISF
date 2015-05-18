@@ -13,4 +13,5 @@ UISF future features/changes
 - Add settability, but also a way to disable settability (for performance reasons).
 - Consider adding a refresh signal of some sort that is automatically provided to widgets that just "re-emerge" from an unused branch of arrow choice.  That way, if they were left in an odd state when the switch happens, they can be normal when they come back.
 - Make a version of asyncE that can perform an IO computation.
-
+- Abstract graphics behind a GADT so that translations and scissoring logic is less opaque and buggy.  This could also help make it easier to switch out the graphics back-end.
+- The listbox widget is not standard.  It should probably take an event stream rather than a continuous one (more in line with the other S widgets), and I'm not sure I like that it has a built-in delay on its output (but I don't know if there are ramifications to that).

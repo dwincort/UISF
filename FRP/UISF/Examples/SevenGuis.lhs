@@ -19,7 +19,6 @@ We declare the module name and import UISF
 > import FRP.UISF
 > import FRP.UISF.UITypes (Layout)
 > import Text.Read (readMaybe)  -- For Temperature Converter
-> import Control.Monad (join)   -- For Temperature Converter
 > 
 > import System.Locale          -- For Flight Booker
 > --import Data.Time.Format.Locale    -- FIXME To be used with time >= 1.5
@@ -87,6 +86,11 @@ accepts an Event String as input and produces String as output.  We use
 the "unique" transformer to transform this output into events that only 
 update when a change occurs.
 
+> uTextbox :: String -> UISF (SEvent String) (SEvent String)
+> uTextbox str = proc e -> do
+>   o <- unique <<< textbox str -< e
+>   returnA -< if o == e then Nothing else o
+
 The first half of the program sets up the 4 widgets (two textboxes and 
 two labels), and the second half does the text parsing and actual 
 conversion (note that this half is all pure Haskell code).
@@ -96,21 +100,21 @@ coded a recursive structure where each field defines the other.  In order
 to prevent infinite recursion, we must put a "delay" into the loop, and 
 so we do this twice, once for each textbox.
 
-> tempCovertSF :: UISF () ()
-> tempCovertSF = leftRight $ proc _ -> do
->   rec c <- unique <<< textbox "" -< updateC
+> tempConvertSF :: UISF () ()
+> tempConvertSF = leftRight $ proc _ -> do
+>   rec c <- uTextbox "" -< updateC
 >       label "degrees Celsius = " -< ()
->       f <- unique <<< textbox "" -< updateF
+>       f <- uTextbox "" -< updateF
 >       label "degrees Fahrenheit" -< ()
->       let cNum = join $ fmap (readMaybe :: String -> Maybe Double) c
->           fNum = join $ fmap (readMaybe :: String -> Maybe Double) f
->           cNum' = if c == updateC then Nothing else cNum
->           fNum' = if f == updateF then Nothing else fNum
->       updateC <- delay Nothing -< fmap (\f -> show $ round $ (f - 32) * (5/9)) fNum'
->       updateF <- delay Nothing -< fmap (\c -> show $ round $ c * (9/5) + 32) cNum'
+>       updateC <- delay Nothing -< fmap (show . f2c) (f >>= readMaybe)
+>       updateF <- delay Nothing -< fmap (show . c2f) (c >>= readMaybe)
 >   returnA -< ()
+>   where f2c :: Double -> Int
+>         f2c f = round $ (f - 32) * (5/9)
+>         c2f :: Double -> Int
+>         c2f c = round $ c * (9/5) + 32
 >
-> tempConvert = runUI (defaultUIParams {uiSize=(400, 24), uiTitle="Temp Converter"}) tempCovertSF
+> tempConvert = runUI (defaultUIParams {uiSize=(400, 24), uiTitle="Temp Converter"}) tempConvertSF
 > gui2 = tempConvert
 
 

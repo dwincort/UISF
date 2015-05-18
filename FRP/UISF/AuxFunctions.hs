@@ -39,7 +39,7 @@ module FRP.UISF.AuxFunctions (
     -- * Signal Function Asynchrony
     -- $asynchrony
     Automaton(..), 
-    asyncV, asyncE, asyncC, asyncC'
+    asyncV, asyncE, asyncC, asyncC', unsafeAsyncIO, unsafeAsyncIOOn
 ) where
 
 import Prelude hiding ((.), id)
@@ -128,7 +128,7 @@ unique = proc e -> do
 --   happens, at which point it changes to the value attached to that 
 --   event, which it then holds until the next event, and so on.
 hold :: ArrowCircuit a => b -> a (SEvent b) b
-hold x = arr (fmap (const $)) >>> accum x
+hold x = arr (fmap const) >>> accum x
 
 -- | Now is a signal function that produces one event and then forever 
 --   after produces nothing.  It is essentially an impulse function.
@@ -603,4 +603,44 @@ asyncC' threadHandler (iAction, oAction) sf = initialAIO iod darr where
     oAction e
     atomicModifyIORef' out (\s -> (s |> c, ()))
     worker inp out sf'
+
+-- | This is a new async function that can perform arbitrary effects.  
+--   For that reason, I am labelling it as unsafe
+unsafeAsyncIOOn :: (ArrowIO a, ArrowLoop a, ArrowCircuit a, ArrowChoice a) => Int -> (b,c) ->
+           (ThreadId -> a () ())    -- ^ The thread handler
+        -> (r, (r,b) -> IO (r,c))   -- ^ Effectful function to asynchronize
+        -> a b c
+unsafeAsyncIOOn n = unsafeAsyncIOHelper (forkOn n)
+
+unsafeAsyncIO :: (ArrowIO a, ArrowLoop a, ArrowCircuit a, ArrowChoice a) => (b,c) ->
+           (ThreadId -> a () ())    -- ^ The thread handler
+        -> (r, (r,b) -> IO (r,c))   -- ^ Effectful function to asynchronize
+        -> a b c
+unsafeAsyncIO = unsafeAsyncIOHelper forkIO
+
+
+unsafeAsyncIOHelper frk (b,c) threadHandler (initr, action) = initialAIO iod darr where
+  iod = do
+    inp <- newIORef b
+    out <- newIORef c
+    tid <- frk $ worker inp out initr
+    return (tid, inp, out)
+  darr (tid, inp, out) = proc b -> do
+    _ <- threadHandler tid -< ()
+--    _ <- liftAIO (\b -> atomicModifyIORef' inp (\s -> (s |> b, ()))) -< b  -- send the worker the new input
+--    c <- liftAIO (\_ -> atomicModifyIORef' out (\s -> (empty,   s))) -< () -- collect ready results
+    _ <- liftAIO (writeIORef inp) -< b  -- send the worker the new input
+    c <- liftAIO (const $ readIORef out) -< () -- collect ready results
+    returnA -< c
+  -- worker processes the inner, "simulated" signal function.
+  worker inp out r = do
+--    b <- atomicModifyIORef' inp (\s -> (empty,s))     -- get the latest input
+    b <- readIORef inp
+    (r',c) <- action (r, b)
+--    atomicModifyIORef' out (\s -> (s |> c, ()))
+    writeIORef out c
+    worker inp out r'
+
+
+
 

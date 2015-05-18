@@ -109,6 +109,9 @@ textbox startingVal = proc ms -> do
       ts <- textbox' -< maybe s id ms
   returnA -< ts
 
+{-# DEPRECATED textboxE "use textbox instead" #-}
+textboxE = textbox
+
 -- | The textbox' variant of textbox contains no internal state about 
 --  the text it displays.  Thus, it must be paired with rec and delay 
 --  and used bidirectionally to be effective.

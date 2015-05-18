@@ -14,12 +14,6 @@ The mind map!  More description can go here in time.
 --   String elements.
 type MindMap = Map.Map String [String]
 
--- This should be in UISF by default
--- | This function takes a layout to describe how much space to take up 
---   and then simply leaves it blank.  Thus, it can act as a spacer.
-spacer :: Layout -> UISF a a
-spacer l = setLayout l $ arr id
-
 -- | This is a compound widget of a textbox and a button.  The 
 --   textbox starts empty and the given String is for the text of the 
 --   button.  When the button is pressed or when 'enter' is pressed 
@@ -34,13 +28,15 @@ textEntryField labl = rightLeft $ focusable $ proc () -> do
 
 uisf :: MindMap -> UISF () ()
 uisf imap = proc () -> do
-  e <- textEntryField "Lookup" -< ()
-  key <- hold "" -< e
+  l <- textEntryField "Lookup" -< ()
   a <- textEntryField "Add" -< ()
-  spacer (makeLayout (Stretchy 1) (Fixed 12)) -< ()
-  leftRight (label "Key = " >>> displayStr) -< key
+  key <- hold "" -< l
   m <- accum imap -< fmap (\v -> Map.insertWith (++) key [v]) a
+  setLayout (makeLayout (Stretchy 1) (Fixed 12)) (arr id) -< ()
+  leftRight (label "Key = " >>> displayStr) -< key
   runDynamic displayStr -< Map.findWithDefault [] key m
   returnA -< ()
 
 main = runUI' (uisf Map.empty)
+
+
