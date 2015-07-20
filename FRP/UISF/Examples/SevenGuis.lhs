@@ -32,7 +32,8 @@ We declare the module name and import UISF
 > import Data.List (isInfixOf)  -- For CRUD
 > import Data.Char (toLower)    -- For CRUD
 > 
-> import FRP.UISF.SOE           -- For Circle Draw
+> import FRP.UISF.Keys          -- For Circle Draw
+> import FRP.UISF.Graphics      -- For Circle Draw
 > import Data.List (delete)     -- For Circle Draw
 > import Control.Monad (mplus)  -- For Circle Draw
 
@@ -367,8 +368,7 @@ canvas widget builder, we will use the more powerful mkWidget.
 To start, let's write some code for circles.  We'll begin with a very 
 simple circle type, accessors for it, and a distance function for points.
 
-> -- type Point = (Int, Int) -- The Point class is imported from FRP.UISF.SOE
-> type Radius = Double
+> type Radius = Int
 > type Circle = (Point, Radius)
 > 
 > getCenter :: Circle -> Point
@@ -390,7 +390,7 @@ gray (if it exists)
 > getSelectedCircle p = getCircle' Nothing where
 >   getCircle' res [] = fmap snd res
 >   getCircle' res (c@(cp,cr):cs) = let d = distance p cp in
->     case (d<cr, isJust res) of
+>     case (d<fromIntegral cr, isJust res) of
 >       (True, True) -> getCircle' (if d < fst (fromJust res) then Just (d,c) else res) cs
 >       (True, False) -> getCircle' (Just (d,c)) cs
 >       _ -> getCircle' res cs
@@ -402,13 +402,6 @@ Thus, the canvas will have three properties:
     on its input stream.
   - It will send output events corresponding to mouse clicks.
   - It will display the circles with any that the cursor is in highlighted.
-
-First, we'll make two little drawing functions for making filled and open 
-circles.  UISF provides the more generic 'ellipse' and 'arc' functions, but 
-they can be easily adjusted for our purposes:
-
-> filledCircle (x,y) r' = let r = round r' in ellipse (x-r,y-r) (x+r,y+r)
-> openCircle   (x,y) r' = let r = round r' in arc     (x-r,y-r) (x+r,y+r) 0 360
 
 Now, we have the tools to make the circle canvas
 
@@ -429,8 +422,8 @@ Now, we have the tools to make the circle canvas
 >           (_, d) -> ((Nothing, Nothing), getSelectedCircle prevPt newLst, prevPt, d)
 >     draw _ _ (cs,fc,_) = draw' cs fc
 >     draw' [] Nothing = nullGraphic
->     draw' [] (Just (p,r)) = withColor' gray2 $ filledCircle p r
->     draw' ((p,r):cs) fc = withColor Black (openCircle p r) // draw' cs fc
+>     draw' [] (Just (p,r)) = withColor' gray2 $ circleFilled p r
+>     draw' ((p,r):cs) fc = withColor Black (circleOutline p r) // draw' cs fc
 
 Lastly, we'll create the undo/redo functionality.  This is all pure 
 Haskell code and has no UISF components.
@@ -509,7 +502,7 @@ the cancel or set buttons are pressed -- we use an 'accum' to achieve this.
 >     (minorU, majorU, cancel) <- if isAdjustActive
 >                                 then do
 >                                 leftRight (label "Adjust Diameter of circle at" >>> display) -< getCenter adjustC
->                                 newR <- hSlider (2,200) defaultRadius -< () -- fmap getRadius rightClicks
+>                                 newR <- hiSlider 1 (2,200) defaultRadius -< () -- fmap getRadius rightClicks
 >                                 newRU <- unique -< newR
 >                                 (setButton, cancelButton) <- leftRight $ (edge <<< button "Set") &&& 
 >                                                                          (edge <<< button "Cancel") -< ()

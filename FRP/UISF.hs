@@ -48,7 +48,7 @@ module FRP.UISF
 import FRP.UISF.UITypes
 import FRP.UISF.UISF
 import FRP.UISF.Widget
-import FRP.UISF.SOE (Color (..))
+import FRP.UISF.Graphics (Color (..), Dimension)
 
 import FRP.UISF.AuxFunctions
 import Control.Arrow

@@ -1,18 +1,27 @@
-UISF future features/changes
-- remove the ArrowTime class and replace it with (ArrowReader Time) or something like that?
-- make the output of asyncC (and asyncC') be monoidal
-- Redo the color stuff in SOE so it's cleaner; perhaps remove Color as a datatype and replace it with values of RGB; then export RGB and those colors; what is RGBA?
-- Put together a proper interface for SOE to ease the process of adapting UISF to work with other graphical back-ends
-    maybe make a GraphicLib class to make it more plug-and-play?
-    Switch from GLFW to OpenGL
-- make a data type UIText: UIText may be expanded (for instance with font, size, etc.) but is essentially a list of (textColor, bgColor, String).  Label takes a UIText, and certain versions of textbox work with UIText
-- mergeE is basically a generic mappend (especially since everyone uses it that way anyway).  How about we remove mergeE entirely and define ~++ as mappend and have UISF export that by default
-- make a cabal "test-suite" (or second library or something like that?) that compiles the various example files.
-- Can I make a test version of runUI that, instead of actually running the UISF, runs it for a few ticks with interesting click/keystroke events and makes sure that the GUI being tested doesn't blackhole?  Are there other ways to auto-test GUIs?
+UISF FUTURE FEATURES/CHANGES
+
+Graphics and Widgets:
+- make a data type UIText: UIText may be expanded (for instance with font, size, etc.) but is essentially a list of (textColor, bgColor, font, size, String).  Label takes a UIText, and certain versions of textbox work with UIText
 - mkBasicWidget should be (a -> b) and its draw routine should take either a or b or both.  Then, I can make a dynamic label that prints its input.  Or maybe not.
-- Add settability (but also a way to disable settability for performance reasons).
-- Consider adding a refresh signal of some sort that is automatically provided to widgets that just "re-emerge" from an unused branch of arrow choice.  That way, if they were left in an odd state when the switch happens, they can be normal when they come back.
-- Make a version of asyncE that can perform an IO computation.
-- Abstract graphics behind a GADT so that translations and scissoring logic is less opaque and buggy.  This could also help make it easier to switch out the graphics back-end.
+- Consider adding a refresh signal of some sort that is automatically provided to widgets that just "re-emerge" from an unused branch of arrow choice.  That way, if they were left in an odd state when the switch happens, they can be normal when they come back.  Alternatively, perhaps widgets can be coded so that they can gracefully fix themselves even when given a NoUIEvent
 - The listbox widget is not standard.  It should probably take an event stream rather than a continuous one (more in line with the other S widgets), and I'm not sure I like that it has a built-in delay on its output (but I don't know if there are ramifications to that).
 - Like the 'S' widgets, perhaps I could make 'D' widgets which are dynamic (e.g. a button or label with dynamic text, a radio with dynamic options, etc).  
+- Incorporate Jadon's widgets
+
+Asynchrony
+- make the output of asyncC (and asyncC') be monoidal
+- Make a version of asyncE that can perform an IO computation.
+- Explore using forkIO, forkOS, and forkOn for async functions.
+
+Testing
+- make a cabal "test-suite" (or second library or something like that?) that compiles the various example files.
+- Can I make a test version of runUI that, instead of actually running the UISF, runs it for a few ticks with interesting click/keystroke events and makes sure that the GUI being tested doesn't blackhole?  Are there other ways to auto-test GUIs?
+
+Bugs and Performance
+- Add settability (but also a way to disable settability for performance reasons).
+- Address the common memory leaks (perhaps force delay to take NFData args and then deepseq them)
+- - Leak is noticeable even when just checking if a (MouseMove pt `inside` bbx) in a simple button
+
+Other:
+- remove the ArrowTime class and replace it with (ArrowReader Time) or something like that?
+- mergeE is basically a generic mappend (especially since everyone uses it that way anyway).  How about we remove mergeE entirely and define ~++ as mappend and have UISF export that by default

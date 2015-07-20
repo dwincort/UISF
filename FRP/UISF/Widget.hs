@@ -20,7 +20,8 @@
 
 module FRP.UISF.Widget where
 
-import FRP.UISF.SOE
+import FRP.UISF.Graphics
+import FRP.UISF.Keys
 import FRP.UISF.UITypes
 import FRP.UISF.UISF
 import FRP.UISF.AuxFunctions (SEvent, Time, timer, edge, delay, constA, concatA)
@@ -74,7 +75,7 @@ displayStr = mkWidget "" d (\v v' _ _ -> ((), v, v /= v')) draw
       let n = (w - padding * 2) `div` 8
       in withColor Black (text (x + padding, y + padding) (take n s)) 
          // box pushed b 
-         // withColor White (block b)
+         // withColor White (rectangleFilled b)
 
 -- | display is a widget that takes any show-able value and displays it.
 display :: Show a => UISF a ()
@@ -138,13 +139,13 @@ textbox' = focusable $
     minh = 16 + padding * 2
     displayLayout = makeLayout (Stretchy 8) (Fixed minh)
     update s  i _ (Key c _ True)          = (take i s ++ [c] ++ drop i s, i+1)
-    update s  i _ (SKey BACKSPACE _ True) = (take (i-1) s ++ drop i s, max (i-1) 0)
-    update s  i _ (SKey DEL       _ True) = (take i s ++ drop (i+1) s, i)
-    update s  i _ (SKey LEFT      _ True) = (s, max (i-1) 0)
-    update s  i _ (SKey RIGHT     _ True) = (s, min (i+1) (length s))
-    update s _i _ (SKey END       _ True) = (s, length s)
-    update s _i _ (SKey HOME      _ True) = (s, 0)
-    update s _i c (Button (x,_) True True) = (s, min (length s) $ (x - xoffset c) `div` 8)
+    update s  i _ (SKey KeyBackspace _ True) = (take (i-1) s ++ drop i s, max (i-1) 0)
+    update s  i _ (SKey KeyDelete    _ True) = (take i s ++ drop (i+1) s, i)
+    update s  i _ (SKey KeyLeft      _ True) = (s, max (i-1) 0)
+    update s  i _ (SKey KeyRight     _ True) = (s, min (i+1) (length s))
+    update s _i _ (SKey KeyEnd       _ True) = (s, length s)
+    update s _i _ (SKey KeyHome      _ True) = (s, 0)
+    update s _i c (Button (x,_) LeftButton True) = (s, min (length s) $ (x - xoffset c) `div` 8)
     update s  i _ _                        = (s, max 0 $ min i $ length s)
     drawCursor (False, _) _ = nullGraphic
     drawCursor (True, i) (w,_h) = 
@@ -162,7 +163,7 @@ title str (UISF fl f) = UISF layout h where
   (tw, th) = (length str * 8, 16)
   drawit ((x, y), (w, h)) = 
     withColor Black (text (x + 10, y) str) 
-    // withColor' bg (block ((x + 8, y), (tw + 4, th))) 
+    // withColor' bg (rectangleFilled ((x + 8, y), (tw + 4, th))) 
     // box marked ((x, y + 8), (w, h - 8))
   layout ctx = let l = fl ctx in l { wMin = max (wMin l) tw, hFixed = hFixed l + 24 }
   h (CTX flow bbx@((x,y), (w,h)) cj,foc,t,inp, a) = 
@@ -205,12 +206,12 @@ button l = focusable $
     process _ s b evt = (s', s', s /= s')
       where 
         s' = case evt of
-          Button pt True down | pt `inside` b -> case (s, down) of
+          Button pt LeftButton down | pt `inside` b -> case (s, down) of
             (False, True) -> True
             (True, False) -> False
             _ -> s
           MouseMove pt       -> (pt `inside` b) && s
-          SKey ENTER _ down -> down
+          SKey KeyEnter _ down -> down
           Key ' ' _ down -> down
           _ -> s
 
@@ -267,7 +268,7 @@ checkboxS l state = proc eb -> do
                 (x + padding + 7, y + h `div` 2 + 3),
                 (x + padding + 11, y + h `div` 2 - 2)])
           // box pushed b 
-          // withColor White (block b)
+          // withColor White (rectangleFilled b)
 
 
 ---------------------
@@ -318,13 +319,15 @@ radioS labels i = proc ei -> do
         (minw, minh) = (tw + padding * 2, th + padding * 2)
         d = makeLayout (Stretchy minw) (Fixed minh)
         draw ((x,y), (_w,h)) inFocus down = 
-          let x' = x + padding + 16 
-              y' = y + (h - th) `div` 2
-          in  withColor Black (text (x', y') l) 
-              // whenG down (circle gray3 (x,y) (5,6) (9,10))
-              // circle gray3 (x,y) (2,3) (12,13) 
-              // circle gray0 (x,y) (2,3) (13,14) 
-              // whenG inFocus (circle gray2 (x,y) (0,0) (14,15))
+          let xT = x + padding + 16 
+              yT = y + (h - th) `div` 2
+              xC = x + padding + 2
+              yC = y + (th `div` 2)
+          in  withColor Black (text (xT, yT) l) 
+              // withColor' gray3 (circleOutline (xC, yC) 5)
+              // withColor' gray0 (arc ((xC-5, yC-5), (11, 11)) 0 360)
+              // whenG down    (withColor' gray3 (circleFilled (xC, yC) 3))
+              // whenG inFocus (withColor' gray2 (circleOutline (xC, yC) 7))
 
 --------------
 -- List Box --
@@ -344,24 +347,24 @@ listbox = focusable $ mkWidget ([], -1) layout process draw >>> delay (-1)
     draw rect@(_,(w,_h)) _ (lst, i) = 
         genTextGraphic rect i lst  
         // box pushed rect 
-        // withColor White (block rect)
+        // withColor White (rectangleFilled rect)
         where
           n = (w - padding * 2) `div` 8
           genTextGraphic _ _ [] = nullGraphic
           genTextGraphic ((x,y),(w,h)) i (v:vs) = (if i == 0
                 then withColor White (text (x + padding, y + padding) (take n (show v)))
-                     // withColor Blue (block ((x,y),(w,lineheight)))
+                     // withColor Blue (rectangleFilled ((x,y),(w,lineheight)))
                 else withColor Black (text (x + padding, y + padding) (take n (show v)))) 
                      // genTextGraphic ((x,y+lineheight),(w,h-lineheight)) (i - 1) vs
     process :: Eq a => ([a], Int) -> ([a], Int) -> Rect -> UIEvent -> (Int, ([a], Int), Bool)
     process (lst,i) olds bbx e = (i', (lst, i'), olds /= (lst, i'))
         where
         i' = case e of
-          Button pt True True -> boundCheck $ pt2index pt
-          SKey DOWN _ True   -> min (i+1) (length lst - 1)
-          SKey UP   _ True   -> max (i-1) 0
-          SKey HOME _ True   -> 0
-          SKey END  _ True   -> length lst - 1
+          Button pt LeftButton True -> boundCheck $ pt2index pt
+          SKey KeyDown _ True   -> min (i+1) (length lst - 1)
+          SKey KeyUp   _ True   -> max (i-1) 0
+          SKey KeyHome _ True   -> 0
+          SKey KeyEnd  _ True   -> length lst - 1
           _ -> boundCheck i
         ((_,y),_) = bbx
         pt2index (_px,py) = (py-y) `div` lineheight
@@ -531,9 +534,9 @@ scrollable layout (w,h) sf = withCTX $ proc ((CTX flow (asdf, (w',h')) _),a) -> 
             yoff = max 0 $ round $ (fromIntegral (h-h')) * hs
             ctx' = CTX flow ((x',y'), (w,h)) cj'
             update (MouseMove p) = MouseMove $ adjustPoint p bbx' (w,h) (xoff,yoff)
-            update (Button p@(x,y) isLeft isDown) = Button (adjustPoint p bbx' (w,h) (xoff,yoff)) isLeft isDown
+            update (Button p@(x,y) mb isDown) = Button (adjustPoint p bbx' (w,h) (xoff,yoff)) mb isDown
             update e = e
-            restrict g = scissorGraphic bbx' $ translateGraphic (0-xoff,0-yoff) g
+            restrict g = boundGraphic bbx' $ translateGraphic (0-xoff,0-yoff) g
             compareRange :: Ord a => a -> (a,a) -> Ordering
             compareRange x (l,u) = case (x < l, x > u) of
               (True, _) -> LT
@@ -625,9 +628,9 @@ toggle iState layout draw = focusable $
     process s s' _ e = (on, s, s /= s')
       where 
         on = case e of
-          Button _ True   True -> True
-          SKey ENTER _ True -> True
-          Key  ' '      _ True -> True
+          Button _ LeftButton True -> True
+          SKey KeyEnter _     True -> True
+          Key  ' '      _     True -> True
           _ -> False 
 
 -- | The mkSlider widget builder is useful in the creation of all sliders.
@@ -657,14 +660,14 @@ mkSlider hori val2pos pos2val jump val0 = focusable $
       let p@(mx,my) = val2pt val (rotR b b)
       in  box popped (rotR (p, (tw, th)) b) 
           // whenG inFocus (box marked $ rotR (p, (tw-2, th-2)) b) 
-          // withColor' bg (block $ rotR ((mx + 2, my + 2), (tw - 4, th - 4)) b) 
+          // withColor' bg (rectangleFilled $ rotR ((mx + 2, my + 2), (tw - 4, th - 4)) b) 
           // box pushed (rotR (bar (rotR b b)) b)
     process ea (val, s) b evt = (val', (val', s'), val /= val') 
       where
         (val', s') = case ea of
           Just a -> (a, s)
           Nothing -> case evt of
-            Button pt' True down -> let pt = rotP pt' bbx in
+            Button pt' LeftButton down -> let pt = rotP pt' bbx in
               case (pt `inside` target, down) of
                 (True, True) -> (val, Just (ptDiff pt val))
                 (_, False)   -> (val, Nothing)
@@ -674,12 +677,12 @@ mkSlider hori val2pos pos2val jump val0 = focusable $
               case s of
                 Just pd -> (pt2val pd pt, Just pd)
                 Nothing -> (val, s)
-            SKey LEFT  _ True -> if hori then (jump (-1) bw val, s) else (val, s)
-            SKey RIGHT _ True -> if hori then (jump 1    bw val, s) else (val, s)
-            SKey UP    _ True -> if hori then (val, s) else (jump (-1) bw val, s)
-            SKey DOWN  _ True -> if hori then (val, s) else (jump 1    bw val, s)
-            SKey HOME  _ True -> (pos2val 0  (bw - 2 * padding - tw), s)
-            SKey END   _ True -> (pos2val bw (bw - 2 * padding - tw), s)
+            SKey KeyLeft  _ True -> if hori then (jump (-1) bw val, s) else (val, s)
+            SKey KeyRight _ True -> if hori then (jump 1    bw val, s) else (val, s)
+            SKey KeyUp    _ True -> if hori then (val, s) else (jump (-1) bw val, s)
+            SKey KeyDown  _ True -> if hori then (val, s) else (jump 1    bw val, s)
+            SKey KeyHome  _ True -> (pos2val 0  (bw - 2 * padding - tw), s)
+            SKey KeyEnd   _ True -> (pos2val bw (bw - 2 * padding - tw), s)
             _ -> (val, s)
         bbx@((bx,_by),(bw,_bh)) = rotR b b
         bar' = let ((x,y),(w,h)) = bar bbx in ((x,y-4),(w,h+8))
@@ -735,9 +738,9 @@ cycleboxS d lst start = focusable $
       where 
         j = fromMaybe i ei
         i' = case evt of
-          Button _ True True -> incr j
-          SKey ENTER _ True -> incr j
-          Key ' ' _ True -> incr j
+          Button _ LeftButton True -> incr j
+          SKey KeyEnter _     True -> incr j
+          Key ' ' _           True -> incr j
           _ -> j
 
 
@@ -758,23 +761,21 @@ focusable (UISF layout f) = proc x -> do
   returnA -< y
  where
   h fun (ctx, (myid,focus),t, inp, (a, hasFocus)) = do
-    lshift <- isKeyPressed LSHIFT
-    rshift <- isKeyPressed RSHIFT
-    let isShift = lshift || rshift
-        (f, hasFocus') = case (focus, hasFocus, inp) of
+    let (f, hasFocus') = case (focus, hasFocus, inp) of
           (HasFocus, _, _) -> (HasFocus, True)
           (SetFocusTo n, _, _) | n == myid -> (NoFocus, True)
           (DenyFocus, _, _) -> (DenyFocus, False)
           (_, _,    Button pt _ True) -> (NoFocus, pt `inside` bounds ctx)
-          (_, True, SKey TAB _ True) -> if isShift then (SetFocusTo (myid-1), False) 
-                                                    else (SetFocusTo (myid+1), False)
+          (_, True, SKey KeyTab ms True) -> if hasShiftModifier ms 
+                                            then (SetFocusTo (myid-1), False) 
+                                            else (SetFocusTo (myid+1), False)
           (_, _, _) -> (focus, hasFocus)
         focus' = if hasFocus' then HasFocus else DenyFocus
         inp' = if hasFocus' then (case inp of 
-              SKey TAB _ _ -> NoUIEvent
+              SKey KeyTab _ _ -> NoUIEvent
               _ -> inp)
                else (case inp of 
-              Button _ _ True -> NoUIEvent
+              Button _ _ True -> NoUIEvent -- TODO: why "True" and not "_"?
               Key  _ _ _      -> NoUIEvent
               SKey _ _ _      -> NoUIEvent
               _ -> inp)
@@ -795,12 +796,12 @@ isInFocus = getFocusData >>> arr ((== HasFocus) . snd)
 ------------------------------------------------------------
 
 bg, gray0, gray1, gray2, gray3, blue3 :: RGB
-bg = rgb 0xec 0xe9 0xd8
-gray0 = rgb 0xff 0xff 0xff
-gray1 = rgb 0xf1 0xef 0xe2
-gray2 = rgb 0xac 0xa8 0x99
-gray3 = rgb 0x71 0x6f 0x64
-blue3 = rgb 0x31 0x3c 0x79
+bg = rgbE 0xec 0xe9 0xd8
+gray0 = rgbE 0xff 0xff 0xff
+gray1 = rgbE 0xf1 0xef 0xe2
+gray2 = rgbE 0xac 0xa8 0x99
+gray3 = rgbE 0x71 0x6f 0x64
+blue3 = rgbE 0x31 0x3c 0x79
 
 box :: [(RGB,RGB)] -> Rect -> Graphic
 box [] _ = nullGraphic 
@@ -810,14 +811,6 @@ box ((t, b):cs) ((x, y), (w, h)) =
                    // line (x, y) (x + w - 2, y)) 
   // withColor' b (line (x + 1, y + h - 1) (x + w - 1, y + h - 1) 
                    // line (x + w - 1, y) (x + w - 1, y + h - 1))
-
-circle :: RGB -> Point -> Dimension -> Dimension -> Graphic
-circle c (x, y) (w1, h1) (w2, h2) = 
-  withColor' c $ arc (x + padding + w1, y + padding + h1) 
-                     (x + padding + w2, y + padding + h2) 0 360
-
-block :: Rect -> Graphic
-block ((x,y), (w, h)) = polygon [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
 
 pushed, popped, marked :: [(RGB,RGB)]
 pushed = [(gray2, gray0),(gray3, gray1)]

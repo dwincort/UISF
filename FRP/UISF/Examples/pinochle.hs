@@ -25,7 +25,7 @@ import FRP.UISF hiding (accum)
 -- We make our own special type of button for inputting hand information, 
 -- so we import a few things directly from Widget and SOE.
 import FRP.UISF.Widget (cycleboxS, padding, (//), whenG, box, marked, pushed, popped)
-import FRP.UISF.SOE (text, withColor)
+import FRP.UISF.Graphics (text, withColor)
 
 import Data.List (delete, foldl', group)
 import GHC.Arr (Ix(..), indexError)

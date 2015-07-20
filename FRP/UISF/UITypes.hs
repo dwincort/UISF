@@ -11,7 +11,7 @@
 
 module FRP.UISF.UITypes where
 
-import FRP.UISF.SOE
+import FRP.UISF.Graphics
 import FRP.UISF.AuxFunctions (mergeE)
 
 ------------------------------------------------------------
@@ -99,10 +99,6 @@ data CTX = CTX
 
 -- | Flow determines widget ordering.
 data Flow = TopDown | BottomUp | LeftRight | RightLeft deriving (Eq, Show)
--- | A dimension specifies size.
-type Dimension = (Int, Int)
--- | A rectangle has a corner point and a dimension.
-type Rect = (Point, Dimension)
 
 
 ------------------------------------------------------------

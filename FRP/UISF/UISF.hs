@@ -10,7 +10,7 @@
 -- A simple Graphical User Interface with concepts borrowed from Phooey
 -- by Conal Elliot.
 
-{-# LANGUAGE ScopedTypeVariables, Arrows, RecursiveDo, CPP, OverlappingInstances, FlexibleInstances, TypeSynonymInstances #-}
+{-# LANGUAGE Arrows, RecursiveDo, CPP, OverlappingInstances, FlexibleInstances, TypeSynonymInstances #-}
 
 module FRP.UISF.UISF (
     UISF(..),
@@ -22,7 +22,7 @@ module FRP.UISF.UISF (
     mkUISF, 
     -- * UISF Lifting
     -- $lifting
-    asyncUISFE, asyncUISFV, --asyncUISFC, 
+    asyncUISFE, asyncUISFEOn, asyncUISFV, --asyncUISFC, 
     -- * Layout Transformers
     -- $lt
     leftRight, rightLeft, topDown, bottomUp, 
@@ -36,20 +36,24 @@ module FRP.UISF.UISF (
 
 #if __GLASGOW_HASKELL__ >= 610
 import Control.Category
-import Prelude hiding ((.), id)
+import Prelude hiding ((.), id, mapM_)
+#else
+import Prelude hiding (mapM_)
 #endif
 import Control.Arrow
 import Control.Arrow.Operations
 
-import FRP.UISF.SOE
+import FRP.UISF.Graphics
+import FRP.UISF.Keys
+import FRP.UISF.Glut
 import FRP.UISF.UITypes
 
 import FRP.UISF.AuxFunctions (Automaton, Time, evMap, 
                               SEvent, ArrowTime (..), ArrowIO (..),
-                              asyncE, asyncV)
+                              asyncE, asyncEOn, asyncV)
 
-import Control.Monad (when)
-import qualified Graphics.UI.GLFW as GLFW (sleep)
+import Control.Monad (when, unless)
+import Data.Foldable (mapM_)
 import Control.Concurrent
 import Control.DeepSeq
 import Data.IORef
@@ -238,6 +242,9 @@ asyncUISFV clockrate buffer sf = proc a -> do
 asyncUISFE :: NFData b => Automaton (->) a b -> UISF (SEvent a) (SEvent b)
 asyncUISFE = asyncE (addTerminationProc . killThread)
 
+asyncUISFEOn :: NFData b => Int -> Automaton (->) a b -> UISF (SEvent a) (SEvent b)
+asyncUISFEOn n = asyncEOn n (addTerminationProc . killThread)
+
 
 ------------------------------------------------------------
 -- * Layout Transformers
@@ -308,6 +315,8 @@ data UIParams = UIParams {
                             --   should be probably be set to O(milliseconds), 
                             --   but it can be set to 0 for better performance 
                             --   (but also higher CPU usage)
+  , uiCloseOnEsc :: Bool    -- ^ Should the UI window close when the user 
+                            --   presses the escape key?
 }
 
 -- | This is the default UIParams value and what is used in runUI'.
@@ -318,7 +327,8 @@ defaultUIParams = UIParams {
     uiTitle = "User Interface",
     uiSize = (300, 300),
     uiInitFlow = TopDown,
-    uiTickDelay = 0.001
+    uiTickDelay = 0.001,
+    uiCloseOnEsc = False
 }
 
 defaultCTX :: Flow -> Dimension -> CTX
@@ -339,69 +349,40 @@ runUI p sf = do
     tref <- newIORef Nothing
     uiInitialize p
     w <- openWindow (uiTitle p) (uiSize p)
-    finally (go tref w) (terminate tref w)
+    finally (go tref w defaultFocus sf) (terminate tref w)
   where
     terminate tref w = do
-      closeWindow w
+      setGraphics w (nullGraphic, False)
+      mwindow <- getWindow w
+      mapM_ closeWindow mwindow
       tproc <- readIORef tref
+      --sequence_ tproc
       case tproc of
         Nothing -> return ()
         Just t -> t
-      --mapM_ killThread tids
       uiClose p
-    go tref w = runGraphics $ do
-      (events, addEv) <- makeStream
-      let pollEvents = windowUser (uiTickDelay p) w addEv
-      -- poll events before we start to make sure event queue isn't empty
-      t0 <- timeGetTime
-      pollEvents
-      let render :: Bool -> [UIEvent] -> Focus -> UISF () () -> IO ()
-          render drawit' (inp:inps) lastFocus uisf = do
-            wSize <- getMainWindowSize
-            t <- timeGetTime
-            let rt = t - t0
+    go tref w lastFocus uisf = do
+      mwindow <- getWindow w
+      -- If the window is not there, GL has closed it.  Time to stop.
+      case mwindow of
+        Nothing -> return ()
+        Just _ -> do
+          ev <- getNextEvent w
+          -- If the event is the Escape key, that's the signal to stop.
+          let die = case ev of
+                (SKey KeyEsc _ True) -> True
+                _ -> False
+          unless (uiCloseOnEsc p && die) $ do
+            -- If there's no event (NoUIEvent), then sleep for tickdelay before processing.
+            when (ev == NoUIEvent) (threadDelay $ truncate $ uiTickDelay p * 1000000)
+            -- For any other event, immediately process it.
+            wSize <- getWindowDim w
+            t <- getElapsedGUITime w
             let ctx = defaultCTX (uiInitFlow p) wSize
-            (dirty, foc, graphic, tproc', _, uisf') <- uisfFun uisf (ctx, lastFocus, rt, inp, ())
-            -- delay graphical output when event queue is not empty
-            setGraphic' w graphic
-            let drawit = dirty || drawit'
-                foc' = resetFocus foc
-            atomicModifyIORef' tref (\tproc -> (mergeTP tproc' tproc, ()))
-            foc' `seq` case inp of
-              -- Timer only comes in when we are done processing user events
-              NoUIEvent -> do 
-                -- output graphics 
-                when drawit $ setDirty w
-                quit <- pollEvents
-                if quit then return ()
-                        else render False inps foc' uisf'
-              _ -> render drawit inps foc' uisf'
-          render _ [] _ _ = return ()
-      render True events defaultFocus sf
-      -- wait a little while before all Midi messages are flushed
-      GLFW.sleep 0.5
-
-windowUser :: Double -> Window -> (UIEvent -> IO ()) -> IO Bool
-windowUser tickDelay w addEv = do 
-  quit <- getEvents
-  addEv NoUIEvent
-  return quit
- where 
-  getEvents :: IO Bool
-  getEvents = do
-    mev <- maybeGetWindowEvent tickDelay w
-    case mev of
-      Nothing -> return False
-      Just e  -> case e of
--- There's a bug somewhere with GLFW that makes pressing ESC freeze up 
--- GHCi (specifically when calling GLFW.closeWindow), so I've removed this.
---        SKey GLFW.ESC True -> closeWindow w >> return True
-        Closed          -> return True
-        _               -> addEv e >> getEvents
-
-makeStream :: IO ([a], a -> IO ())
-makeStream = do
-  ch <- newChan
-  contents <- getChanContents ch
-  return (contents, writeChan ch)
+            (dirty, foc, graphic, tproc', _, uisf') <- uisfFun uisf (ctx, lastFocus, t, ev, ())
+            setGraphics w (graphic, dirty)
+            let foc' = resetFocus foc
+            foc' `seq` atomicModifyIORef' tref (\tproc -> (mergeTP tproc' tproc, ()))
+            go tref w foc' uisf'
+    -- TODO: dirty should always be set to True for the first iteration
 

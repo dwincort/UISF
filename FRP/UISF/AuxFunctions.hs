@@ -39,7 +39,7 @@ module FRP.UISF.AuxFunctions (
     -- * Signal Function Asynchrony
     -- $asynchrony
     Automaton(..), 
-    asyncV, asyncE, asyncC, asyncC', unsafeAsyncIO, unsafeAsyncIOOn
+    asyncV, asyncE, asyncEOn, asyncC, asyncC', unsafeAsyncIO, unsafeAsyncIOOn
 ) where
 
 import Prelude hiding ((.), id)
@@ -504,22 +504,27 @@ asyncV clockrate buffer threadHandler sf = initialAIO iod darr where
 
 
 
+asyncE t = asyncEHelper forkIO t
+asyncEOn n t = asyncEHelper (forkOn n) t
+
+
 -- | The asyncE (E for \"Event\") function takes a signal function (an Automaton) and converts 
 --   it into an asynchronous event-based signal function usable in a ArrowIO signal 
 --   function context.  The output arrow takes events of type a, feeds them to 
 --   the asynchronously running input signal function, and returns events with the output 
 --   b whenever they are ready.  The input signal function is expected to run slowly 
 --   compared to the output one, but it is capable of running just as fast.
-asyncE :: (ArrowIO a, ArrowLoop a, ArrowCircuit a, ArrowChoice a, NFData c) => 
-          (ThreadId -> a () ()) -- ^ The thread handler
+asyncEHelper :: (ArrowIO a, ArrowLoop a, ArrowCircuit a, ArrowChoice a, NFData c) => 
+          (IO () -> IO ThreadId)
+       -> (ThreadId -> a () ()) -- ^ The thread handler
        -> (Automaton (->) b c)  -- ^ The automaton to convert to asynchronize
        -> a (SEvent b) (SEvent c)
-asyncE threadHandler sf = initialAIO iod darr where
+asyncEHelper frk threadHandler sf = initialAIO iod darr where
   iod = do
     inp <- newIORef empty
     out <- newIORef empty
     proceed <- newEmptyMVar
-    tid <- forkIO $ worker proceed inp out sf
+    tid <- frk $ worker proceed inp out sf
     return (tid, proceed, inp, out)
   -- count should start at 0
   darr (tid, proceed, inp, out) = proc eb -> do

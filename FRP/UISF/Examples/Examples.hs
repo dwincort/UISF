@@ -9,7 +9,7 @@
 module FRP.UISF.Examples.Examples where
 
 import FRP.UISF
-import FRP.UISF.SOE (withColor', rgb, polygon)
+import FRP.UISF.Graphics (withColor', rgbE, rectangleFilled)
 
 import Numeric (showHex)
 
@@ -76,8 +76,7 @@ colorDemo = title "Color" $ leftRight $ proc _ -> do
       v <- viSlider 16 (0,255) 0 -< ()
       _ <- setSize (22,22) displayStr -< showHex v ""
       returnA -< v
-    box ((x,y), (w, h)) = polygon [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
-    rect (r,g,b) d = withColor' (rgb r g b) (box ((0,0),d))
+    rect (r,g,b) d = withColor' (rgbE r g b) (rectangleFilled ((0,0),d))
 
 -- | This example shows off the 'textbox' widget.  Text can be typed in, and 
 -- that text is transferred to the 'display' widget below when the button 
