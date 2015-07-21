@@ -7,17 +7,16 @@
 -----------------------------
 
 The UISF package provides an arrowized FRP library for graphical user 
-interfaces.  UISF stems from work done on Euterpea 
-(http://haskell.cs.yale.edu/).
+interfaces.  UISF stems from work done on Euterpea (http://haskell.cs.yale.edu/).
 
-See Liense for licensing information.
+See License for licensing information.
 
 
 ============================
 ==== Getting the Source ====
 ============================
 
-Currently (1/14/2015), the most up-to-date version of UISF is 
+Currently (7/20/2015), the most up-to-date version of UISF is 
 available through GitHub at:
 
     https://github.com/dwincort/UISF

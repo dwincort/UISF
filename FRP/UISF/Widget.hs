@@ -33,18 +33,28 @@ import Data.Maybe (fromMaybe)
 -- Shorthand and Helper Functions
 ------------------------------------------------------------
 
--- Default padding between border and content
+-- | Default padding between border and content.
 padding :: Int
 padding = 3 
 
--- Introduce a shorthand for overGraphic
+-- | The default assumed background color of the GUI window.
+bg :: Color
+bg = LightBeige
+
+-- | An infix shorthand for overGraphic.
 (//) :: Graphic -> Graphic -> Graphic
 (//) = overGraphic
 
--- And a nice way to make a graphic under only certain conditions
+-- | A nice way to make a graphic under only certain conditions.
 whenG :: Bool -> Graphic -> Graphic
 whenG True  g = g
 whenG False _ = nullGraphic
+
+-- | Tests whether a Point is within the bounds of a rectangle.
+inside :: Point -> Rect -> Bool
+inside (u, v) ((x, y), (w, h)) = u >= x && v >= y && u < x + w && v < y + h
+
+
 
 ------------------------------------------------------------
 -- * Widgets
@@ -74,7 +84,7 @@ displayStr = mkWidget "" d (\v v' _ _ -> ((), v, v /= v')) draw
     draw b@((x,y), (w, _h)) _ s = 
       let n = (w - padding * 2) `div` 8
       in withColor Black (text (x + padding, y + padding) (take n s)) 
-         // box pushed b 
+         // shadowBox pushed b 
          // withColor White (rectangleFilled b)
 
 -- | display is a widget that takes any show-able value and displays it.
@@ -163,8 +173,8 @@ title str (UISF fl f) = UISF layout h where
   (tw, th) = (length str * 8, 16)
   drawit ((x, y), (w, h)) = 
     withColor Black (text (x + 10, y) str) 
-    // withColor' bg (rectangleFilled ((x + 8, y), (tw + 4, th))) 
-    // box marked ((x, y + 8), (w, h - 8))
+    // withColor bg (rectangleFilled ((x + 8, y), (tw + 4, th))) 
+    // shadowBox marked ((x, y + 8), (w, h - 8))
   layout ctx = let l = fl ctx in l { wMin = max (wMin l) tw, hFixed = hFixed l + 24 }
   h (CTX flow bbx@((x,y), (w,h)) cj,foc,t,inp, a) = 
     let ctx' = CTX flow ((x + 6, y + 18), (w - 12, h - 26)) cj
@@ -201,8 +211,8 @@ button l = focusable $
       let x' = x + (w - tw) `div` 2 + if down then 0 else -1
           y' = y + (h - th) `div` 2 + if down then 0 else -1
       in withColor Black (text (x', y') l) 
-         // whenG inFocus (box marked b)
-         // box (if down then pushed else popped) b
+         // whenG inFocus (shadowBox marked b)
+         // shadowBox (if down then pushed else popped) b
     process _ s b evt = (s', s', s /= s')
       where 
         s' = case evt of
@@ -232,8 +242,8 @@ stickyButtonS l = arr (fmap $ \b -> if b then 1 else 0) >>> cycleboxS d lst 0 wh
     let x' = x + (w - tw) `div` 2 + if down then 0 else -1
         y' = y + (h - th) `div` 2 + if down then 0 else -1
     in withColor Black (text (x', y') l) 
-       // whenG inFocus (box marked b)
-       // box (if down then pushed else popped) b
+       // whenG inFocus (shadowBox marked b)
+       // shadowBox (if down then pushed else popped) b
   lst = [(draw False, False),(draw True, True)]
 
 
@@ -261,13 +271,13 @@ checkboxS l state = proc eb -> do
           y' = y + (h - th) `div` 2
           b = ((x + padding + 2, y + h `div` 2 - 6), (12, 12))
       in  withColor Black (text (x', y') l) 
-          // whenG inFocus (box marked b)
+          // whenG inFocus (shadowBox marked b)
           // whenG down 
-             (withColor' gray3 $ polyline 
+             (withColor DarkBeige $ polyline 
                [(x + padding + 5, y + h `div` 2),
                 (x + padding + 7, y + h `div` 2 + 3),
                 (x + padding + 11, y + h `div` 2 - 2)])
-          // box pushed b 
+          // shadowBox pushed b 
           // withColor White (rectangleFilled b)
 
 
@@ -324,10 +334,10 @@ radioS labels i = proc ei -> do
               xC = x + padding + 2
               yC = y + (th `div` 2)
           in  withColor Black (text (xT, yT) l) 
-              // withColor' gray3 (circleOutline (xC, yC) 5)
-              // withColor' gray0 (arc ((xC-5, yC-5), (11, 11)) 0 360)
-              // whenG down    (withColor' gray3 (circleFilled (xC, yC) 3))
-              // whenG inFocus (withColor' gray2 (circleOutline (xC, yC) 7))
+              // withColor DarkBeige (circleOutline (xC, yC) 5)
+              // withColor White (arc ((xC-5, yC-5), (11, 11)) 0 360)
+              // whenG down    (withColor DarkBeige (circleFilled (xC, yC) 3))
+              // whenG inFocus (withColor MediumBeige (circleOutline (xC, yC) 7))
 
 --------------
 -- List Box --
@@ -346,7 +356,7 @@ listbox = focusable $ mkWidget ([], -1) layout process draw >>> delay (-1)
     --draw :: Show a => Rect -> ([a], Int) -> Graphic
     draw rect@(_,(w,_h)) _ (lst, i) = 
         genTextGraphic rect i lst  
-        // box pushed rect 
+        // shadowBox pushed rect 
         // withColor White (rectangleFilled rect)
         where
           n = (w - padding * 2) `div` 8
@@ -658,10 +668,10 @@ mkSlider hori val2pos pos2val jump val0 = focusable $
                          (w - tw - padding * 2, 4))
     draw b inFocus (val, _) = 
       let p@(mx,my) = val2pt val (rotR b b)
-      in  box popped (rotR (p, (tw, th)) b) 
-          // whenG inFocus (box marked $ rotR (p, (tw-2, th-2)) b) 
-          // withColor' bg (rectangleFilled $ rotR ((mx + 2, my + 2), (tw - 4, th - 4)) b) 
-          // box pushed (rotR (bar (rotR b b)) b)
+      in  shadowBox popped (rotR (p, (tw, th)) b) 
+          // whenG inFocus (shadowBox marked $ rotR (p, (tw-2, th-2)) b) 
+          // withColor bg (rectangleFilled $ rotR ((mx + 2, my + 2), (tw - 4, th - 4)) b) 
+          // shadowBox pushed (rotR (bar (rotR b b)) b)
     process ea (val, s) b evt = (val', (val', s'), val /= val') 
       where
         (val', s') = case ea of
@@ -792,31 +802,33 @@ isInFocus = getFocusData >>> arr ((== HasFocus) . snd)
 
 
 ------------------------------------------------------------
--- UI colors and drawing routine
+-- * Supplemental Drawing Function
 ------------------------------------------------------------
 
-bg, gray0, gray1, gray2, gray3, blue3 :: RGB
-bg = rgbE 0xec 0xe9 0xd8
-gray0 = rgbE 0xff 0xff 0xff
-gray1 = rgbE 0xf1 0xef 0xe2
-gray2 = rgbE 0xac 0xa8 0x99
-gray3 = rgbE 0x71 0x6f 0x64
-blue3 = rgbE 0x31 0x3c 0x79
+-- | A convenience function for making a box that appears to have a 
+--  shadow.  This is accomplished by using four colors representing:
+--
+--  (Top outside, Top inside, Bottom inside, Bottom Outside).
+--
+--  This is designed to be used with the below values 'pushed', 
+--  'popped', and 'marked'.
+shadowBox :: (Color,Color,Color,Color) -> Rect -> Graphic
+shadowBox (to,ti,bi,bo) ((x, y), (w, h)) = 
+     withColor to (line (x, y) (x, y + h - 1) 
+                // line (x, y) (x + w - 2, y)) 
+  // withColor bo (line (x + 1, y + h - 1) (x + w - 1, y + h - 1) 
+                // line (x + w - 1, y) (x + w - 1, y + h - 1))
+  // withColor ti (line (x + 1, y + 1) (x + 1, y + h - 2) 
+                // line (x + 1, y + 1) (x + w - 3, y + 1)) 
+  // withColor bi (line (x + 2, y + h - 2) (x + w - 2, y + h - 2) 
+                // line (x + w - 2, y + 1) (x + w - 2, y + h - 2))
 
-box :: [(RGB,RGB)] -> Rect -> Graphic
-box [] _ = nullGraphic 
-box ((t, b):cs) ((x, y), (w, h)) = 
-  box cs ((x + 1, y + 1), (w - 2, h - 2)) 
-  // withColor' t (line (x, y) (x, y + h - 1) 
-                   // line (x, y) (x + w - 2, y)) 
-  // withColor' b (line (x + 1, y + h - 1) (x + w - 1, y + h - 1) 
-                   // line (x + w - 1, y) (x + w - 1, y + h - 1))
-
-pushed, popped, marked :: [(RGB,RGB)]
-pushed = [(gray2, gray0),(gray3, gray1)]
-popped = [(gray1, gray3),(gray0, gray2)]
-marked = [(gray2, gray0),(gray0, gray2)]
-
-inside :: Point -> Rect -> Bool
-inside (u, v) ((x, y), (w, h)) = u >= x && v >= y && u < x + w && v < y + h
+pushed, popped, marked :: (Color,Color,Color,Color)
+-- | A 'pushed' 'shadowBox' appears as if it is pushed inward.
+pushed = (MediumBeige, DarkBeige, VLightBeige, White)
+-- | A 'popped' 'shadowBox' appears as if it pops outward.
+popped = (VLightBeige, White, MediumBeige, DarkBeige)
+-- | A 'marked' 'shadowBox' appears somewhat between popped and pushed 
+--  and is designed to indicate that the box is at the ready.
+marked = (MediumBeige, White, MediumBeige, White)
 

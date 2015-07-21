@@ -73,30 +73,38 @@ data WindowData = WindowData {
   -- ^  This action retrieves the next keyboard/mouse event to be 
   --    processed.  In the case that there is no new event, NoUIEvent 
   --    is provided.
+  peekNextEvent :: IO UIEvent,
+  -- ^  This action peeks at the next keyboard/mouse event to be 
+  --    processed.  In the case that there is no new event, NoUIEvent 
+  --    is provided.  This was added for a potential performance boost.
   getElapsedGUITime :: IO Double
+  -- ^  This action retrieves the number of real time seconds that have 
+  --    elapsed since the GUI began.
 }
 
 -- | This function creates the GUI window.  It takes as arguments 
---  a title for the window and initial dimensions, and it produces 
---  a WindowData object to use as communication to the window.
+--  a default background color, a title for the window, and the initial 
+--  dimensions for the window; it produces a WindowData object to use 
+--  as communication to the window.
 --
 --  Note that the main GLUT loop is run in a separate OS thread produced 
 --  by forkOS.
-openWindow :: String -> Dimension -> IO WindowData
-openWindow title (x,y) = do
+openWindow :: RGB -> String -> Dimension -> IO WindowData
+openWindow rgb title (x,y) = do
   gRef  <- newIORef (nullGraphic, False)
   wRef  <- newIORef Nothing
   wdRef <- newIORef (x,y)
   eChan <- atomically newTChan
   continue <- newEmptyMVar
   let w = WindowData (writeIORef gRef) (readIORef wRef)
-                     (readIORef wdRef) (nextEvent eChan) guiTime
+                     (readIORef wdRef) (nextEvent tryReadTChan eChan) 
+                     (nextEvent tryPeekTChan eChan) guiTime
   forkOS (f gRef wRef wdRef eChan continue)
   takeMVar continue
   return w
  where 
-  nextEvent c = do
-    me <- atomically $ tryReadTChan c
+  nextEvent r c = do
+    me <- atomically $ r c
     case me of
       Nothing -> return NoUIEvent
       Just e  -> return e
@@ -110,8 +118,8 @@ openWindow title (x,y) = do
     writeIORef wRef (Just w)
     -- We want the program to be able to continue when the window closes.
     actionOnWindowClose $= ContinueExecution
-    -- Set the default background color to a GUI gray.
-    clearColor $= guiGray
+    -- Set the default background color.
+    setBackgroundColor rgb
     
     -- Set up the various call back functions.
     displayCallback $= displayCB gRef
@@ -139,9 +147,13 @@ openWindow title (x,y) = do
 closeWindow :: Window -> IO ()
 closeWindow = destroyWindow
 
--- | A default gray background color for the GUI.
-guiGray :: Color4 GLclampf
-guiGray = Color4 (0xec/0xff) (0xe9/0xff) (0xd8/0xff) (0x00) -- Color4 0 0 0 0
+-- | Set the default background color for the GUI window.
+setBackgroundColor :: RGB -> IO ()
+setBackgroundColor rgb = clearColor $= Color4 r g b 0
+  where (r',g',b') = extractRGB rgb
+        r = fromIntegral r' / 255
+        g = fromIntegral g' / 255
+        b = fromIntegral b' / 255
 
 -- | The callback to update the display.
 displayCB :: IORef (Graphic, DirtyBit) -> DisplayCallback
@@ -201,8 +213,8 @@ motionCB chan (Position x y) =
 closeCB :: IORef (Maybe Window) -> CloseCallback
 closeCB ref = writeIORef ref Nothing
 
--- | Converts the GUI's elapsed time into seconds from GLUT's millisecond 
---  default.
+-- | Converts the GUI's elapsed time from GLUT's integral millisecond 
+--  standard into floating point seconds.
 guiTime :: IO Double
 guiTime = do
   mills <- get elapsedTime

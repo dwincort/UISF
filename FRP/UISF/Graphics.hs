@@ -7,11 +7,12 @@
 -- Maintainer  :  dwc@cs.yale.edu
 -- Stability   :  experimental
 
+{-# LANGUAGE BangPatterns #-}
 module FRP.UISF.Graphics (
   -- $graphics
   -- * Useful Types
   Point, Angle, Dimension, Rect,
-  Color(..), RGB, rgb, rgbE,
+  Color(..), RGB, colorToRGB, rgb, rgbE, extractRGB,
   -- * Graphics
   Graphic,
   nullGraphic,
@@ -31,6 +32,7 @@ import qualified Graphics.Rendering.OpenGL as GL
 import Graphics.Rendering.OpenGL (($=), GLfloat)
 import qualified Graphics.UI.GLUT as GLUT
 import Data.Ix (Ix)
+import Control.DeepSeq
 
 {- $graphics
 This module provides an abstract representation for graphics in the GUI 
@@ -68,7 +70,9 @@ type Rect = (Point, Dimension)
 type Angle = Double
 
 -- | We provide a data type for colors to allow users to easily 
---  and clearly specify common colors.
+--  and clearly specify common colors.  Primary and secondary 
+--  RGB colors are represented along with a few beige colors for use 
+--  in many GUI elements.
 data Color = Black
            | Blue
            | Green
@@ -77,14 +81,23 @@ data Color = Black
            | Magenta
            | Yellow
            | White
+           | VLightBeige
+           | LightBeige -- ^ This is the default background color for the UI window.
+           | MediumBeige
+           | DarkBeige
   deriving (Eq, Ord, Bounded, Enum, Ix, Show, Read)
+
+instance NFData Color
 
 -- | RGB can be used to specify colors more precisely.  Create them with 
 --  one of the two smart constructors 'rgb' or 'rgbE'.
 newtype RGB = RGB (Float, Float, Float)
   deriving (Eq, Show)
 
--- | An internal function for converting Color to RGB.
+instance NFData RGB
+
+-- | Generally used as an internal function for converting Color to RGB, 
+--  but can be used by anyone.
 colorToRGB :: Color -> RGB
 colorToRGB Black   = RGB (0, 0, 0)
 colorToRGB Blue    = RGB (0, 0, 1)
@@ -94,6 +107,14 @@ colorToRGB Red     = RGB (1, 0, 0)
 colorToRGB Magenta = RGB (1, 0, 1)
 colorToRGB Yellow  = RGB (1, 1, 0)
 colorToRGB White   = RGB (1, 1, 1)
+colorToRGB VLightBeige = rgbE 0xf1 0xef 0xe2
+colorToRGB LightBeige  = rgbE 0xec 0xe9 0xd8
+colorToRGB MediumBeige = rgbE 0xac 0xa8 0x99
+colorToRGB DarkBeige   = rgbE 0x71 0x6f 0x64
+-- In pervious versions, there was a color called "blue3".
+-- blue3 = rgbE 0x31 0x3c 0x79 --dark slate blue
+
+
 
 -- | This function takes three integral values between 0 and 255 
 --  inclusive and create an RGB value with them.  If any of the 
@@ -116,6 +137,10 @@ rgbE :: (Integral r, Integral g, Integral b,
 rgbE r g b = case rgb r g b of
   Just x  -> x
   Nothing -> error $ "Invalid values given to rgbE: " ++ show (r,g,b)
+
+-- | Use this to extract the values from an RGB color.
+extractRGB :: (Integral r, Integral g, Integral b) => RGB -> (r,g,b)
+extractRGB (RGB (r, g, b)) = (round $ 255 * r, round $ 255 * g, round $ 255 * b)
 
 ------------------------------------------------------------
 -- Graphic
@@ -144,6 +169,21 @@ data Graphic =
   | GBounded Rect Graphic
   | OverGraphic Graphic Graphic
   deriving (Eq, Show)
+
+instance NFData Graphic where
+  rnf NoGraphic = ()
+  rnf (GText (!_,!_) str) = ()
+  rnf (GPolyLine !pts) = ()
+  rnf (GPolygon !pts) = ()
+  rnf (GArc ((!_,!_),(!_,!_)) !_ !_) = ()
+  rnf (GEllipse ((!_,!_),(!_,!_))) = ()
+  rnf (GBezier !pts) = ()
+  rnf (GTranslate (!_,!_) g) = rnf g
+  rnf (GRotate (!_,!_) !_ g) = rnf g
+  rnf (GScale !_ !_ g) = rnf g
+  rnf (GColor !_ g) = rnf g
+  rnf (GBounded ((!_,!_),(!_,!_)) g) = rnf g
+  rnf (OverGraphic g1 g2) = rnf g1 `seq` rnf g2
 
 -- | The absence of a graphic.
 nullGraphic :: Graphic

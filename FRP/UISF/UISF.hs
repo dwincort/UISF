@@ -125,7 +125,11 @@ instance ArrowIO UISF where
     fun inps = do
       d <- iod
       (db, foc', g, tp, c, uisff') <- uisfFun (f d) inps
-      return (db, foc', g, tp, c, uisff')
+      return (db, foc', g, tp, c, setDirty uisff')
+    setDirty (UISF l f) = UISF l h where
+      h inp = do
+        (_, foc', g, tp, c, uisf) <- f inp
+        return (True, foc', g, tp, c, uisf)
 
 instance ArrowTime UISF where
   time = getTime
@@ -317,6 +321,7 @@ data UIParams = UIParams {
                             --   (but also higher CPU usage)
   , uiCloseOnEsc :: Bool    -- ^ Should the UI window close when the user 
                             --   presses the escape key?
+  , uiBackground :: RGB     -- ^ The default color of the UI window background.
 }
 
 -- | This is the default UIParams value and what is used in runUI'.
@@ -328,7 +333,8 @@ defaultUIParams = UIParams {
     uiSize = (300, 300),
     uiInitFlow = TopDown,
     uiTickDelay = 0.001,
-    uiCloseOnEsc = False
+    uiCloseOnEsc = False,
+    uiBackground = colorToRGB LightBeige
 }
 
 defaultCTX :: Flow -> Dimension -> CTX
@@ -348,7 +354,7 @@ runUI  :: UIParams -> UISF () () -> IO ()
 runUI p sf = do
     tref <- newIORef Nothing
     uiInitialize p
-    w <- openWindow (uiTitle p) (uiSize p)
+    w <- openWindow (uiBackground p) (uiTitle p) (uiSize p)
     finally (go tref w defaultFocus sf) (terminate tref w)
   where
     terminate tref w = do
@@ -367,8 +373,8 @@ runUI p sf = do
       case mwindow of
         Nothing -> return ()
         Just _ -> do
-          ev <- getNextEvent w
-          -- If the event is the Escape key, that's the signal to stop.
+          ev <- getNextEvent' w
+          -- If the event is the Escape key, that may be a signal to stop.
           let die = case ev of
                 (SKey KeyEsc _ True) -> True
                 _ -> False
@@ -380,9 +386,27 @@ runUI p sf = do
             t <- getElapsedGUITime w
             let ctx = defaultCTX (uiInitFlow p) wSize
             (dirty, foc, graphic, tproc', _, uisf') <- uisfFun uisf (ctx, lastFocus, t, ev, ())
-            setGraphics w (graphic, dirty)
             let foc' = resetFocus foc
-            foc' `seq` atomicModifyIORef' tref (\tproc -> (mergeTP tproc' tproc, ()))
+                -- When we're in the middle of setting focus, don't set 
+                -- the graphic yet.  Wait until it's done, and then set it.
+                dirty' = case (snd lastFocus, snd foc') of
+                    (_, SetFocusTo _) -> False
+                    (SetFocusTo _, NoFocus) -> True
+                    _ -> dirty
+            case dirty' of 
+              -- Is this deepseq even helping?
+              True -> deepseq graphic $ setGraphics w (graphic, True)
+              False -> setGraphics w (graphic, False)
+            atomicModifyIORef' tref (\tproc -> (mergeTP tproc' tproc, ()))
             go tref w foc' uisf'
-    -- TODO: dirty should always be set to True for the first iteration
-
+    -- this getNextEvent' function is implementing a possible performance boost.
+    -- TODO: Does this actually help at all?
+    getNextEvent' w = do
+      e <- getNextEvent w
+      case e of
+        MouseMove _ -> do
+          e' <- peekNextEvent w
+          case e' of
+            MouseMove _ -> getNextEvent' w
+            _ -> return e
+        _ -> return e
