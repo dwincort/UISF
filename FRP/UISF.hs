@@ -39,6 +39,7 @@ module FRP.UISF
   , LayoutType (..)     -- data LayoutType = Stretchy { minSize :: Int } | Fixed { fixedSize :: Int }
   , Layout              -- data Layout = Layout {..}
   , getTime             -- :: UISF () Time
+  , getDeltaTime        -- :: UISF () DeltaT
   , asyncUISFV          -- :: NFData b => Double -> Double -> Automaton a b -> UISF a ([b], Bool)
   , asyncUISFE          -- :: NFData b => Automaton a b -> UISF (SEvent a) (SEvent b)
   , module FRP.UISF.AuxFunctions
@@ -52,3 +53,7 @@ import FRP.UISF.Graphics (Color (..), Dimension)
 
 import FRP.UISF.AuxFunctions
 import Control.Arrow
+
+{-# DEPRECATED getTime "As of UISF-0.4.0.0, use accumTime instead, which is a little different but should work fine" #-}
+getTime :: UISF () Time
+getTime = accumTime

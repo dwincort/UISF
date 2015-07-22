@@ -10,14 +10,14 @@
 -- A simple Graphical User Interface with concepts borrowed from Phooey
 -- by Conal Elliot.
 
-{-# LANGUAGE Arrows, RecursiveDo, CPP, OverlappingInstances, FlexibleInstances, TypeSynonymInstances #-}
+{-# LANGUAGE Arrows, RecursiveDo, CPP, OverlappingInstances, FlexibleInstances, TypeSynonymInstances, MultiParamTypeClasses #-}
 
 module FRP.UISF.UISF (
     UISF(..),
     uisfSource, uisfSink, uisfPipe,
     uisfSourceE, uisfSinkE, uisfPipeE,
     -- * UISF Getters
-    getTime, getCTX, withCTX, getEvents, getFocusData, addTerminationProc, getMousePosition, 
+    getDeltaTime, getCTX, withCTX, getEvents, getFocusData, addTerminationProc, getMousePosition, 
     -- * UISF constructors, transformers, and converters
     mkUISF, 
     -- * UISF Lifting
@@ -48,8 +48,8 @@ import FRP.UISF.Keys
 import FRP.UISF.Glut
 import FRP.UISF.UITypes
 
-import FRP.UISF.AuxFunctions (Automaton, Time, evMap, 
-                              SEvent, ArrowTime (..), ArrowIO (..),
+import FRP.UISF.AuxFunctions (Automaton, Time, DeltaT, accumTime, getDeltaT, evMap, 
+                              SEvent, ArrowIO (..),
                               asyncE, asyncEOn, asyncV)
 
 import Control.Monad (when, unless)
@@ -66,7 +66,7 @@ import Control.Exception
 
 data UISF b c = UISF 
   { uisfLayout :: Flow -> Layout,
-    uisfFun    :: (CTX, Focus, Time, UIEvent, b) -> 
+    uisfFun    :: (CTX, Focus, DeltaT, UIEvent, b) -> 
                   IO (DirtyBit, Focus, Graphic, TerminationProc, c, UISF b c) }
 
 instance Category UISF where
@@ -131,8 +131,13 @@ instance ArrowIO UISF where
         (_, foc', g, tp, c, uisf) <- f inp
         return (True, foc', g, tp, c, uisf)
 
-instance ArrowTime UISF where
-  time = getTime
+instance ArrowReader DeltaT UISF where
+  readState = getDeltaTime
+  newReader (UISF l f) = UISF l h where
+    h (ctx, foc, dt, e, (b, dt')) = do
+      (db, foc', g, tp, c, uisf) <- f (ctx, foc, dt', e, b)
+      return (db, foc', g, tp, c, newReader uisf)
+    
 
 
 ------------------------------------------------------------
@@ -169,10 +174,10 @@ uisfPipeE = evMap . uisfPipe
 ------------------------------------------------------------
 
 -- | Get the time signal from a UISF.
-getTime      :: UISF () Time
-getTime      = mkUISF nullLayout (\(_,f,t,_,_) -> (False, f, nullGraphic, nullTP, t))
+getDeltaTime :: UISF b DeltaT
+getDeltaTime = mkUISF nullLayout (\(_,f,dt,_,_) -> (False, f, nullGraphic, nullTP, dt))
 
-{-# DEPRECATED getCTX "Use withCTX instead" #-}
+{-# DEPRECATED getCTX "As of UISF-0.4.0.0, use withCTX instead" #-}
 -- | Get the context signal from a UISF.
 --   This has been deprecated in favor of withCTX as it can provide 
 --   misleading information.
@@ -211,7 +216,7 @@ getMousePosition = proc _ -> do
   returnA -< p
 
 -- | This function creates a UISF with the given parameters.
-mkUISF :: Layout -> ((CTX, Focus, Time, UIEvent, a) -> (DirtyBit, Focus, Graphic, TerminationProc, b)) -> UISF a b
+mkUISF :: Layout -> ((CTX, Focus, DeltaT, UIEvent, a) -> (DirtyBit, Focus, Graphic, TerminationProc, b)) -> UISF a b
 mkUISF l f = UISF (const l) fun where
   fun inps = let (db, foc, g, tp, b) = f inps in return (db, foc, g, tp, b, mkUISF l f)
 
@@ -238,7 +243,7 @@ mkUISF l f = UISF (const l) fun where
 -- function is performing as fast as it should.
 asyncUISFV :: NFData b => Double -> Double -> Automaton (->) a b -> UISF a [(b, Time)]
 asyncUISFV clockrate buffer sf = proc a -> do
-  t <- time -< ()
+  t <- accumTime -< ()
   asyncV clockrate buffer (addTerminationProc . killThread) sf -< (a, t)
 
 
@@ -355,7 +360,7 @@ runUI p sf = do
     tref <- newIORef Nothing
     uiInitialize p
     w <- openWindow (uiBackground p) (uiTitle p) (uiSize p)
-    finally (go tref w defaultFocus sf) (terminate tref w)
+    finally (go tref w defaultFocus 0 sf) (terminate tref w)
   where
     terminate tref w = do
       setGraphics w (nullGraphic, False)
@@ -367,7 +372,7 @@ runUI p sf = do
         Nothing -> return ()
         Just t -> t
       uiClose p
-    go tref w lastFocus uisf = do
+    go tref w lastFocus tprev uisf = do
       mwindow <- getWindow w
       -- If the window is not there, GL has closed it.  Time to stop.
       case mwindow of
@@ -385,7 +390,7 @@ runUI p sf = do
             wSize <- getWindowDim w
             t <- getElapsedGUITime w
             let ctx = defaultCTX (uiInitFlow p) wSize
-            (dirty, foc, graphic, tproc', _, uisf') <- uisfFun uisf (ctx, lastFocus, t, ev, ())
+            (dirty, foc, graphic, tproc', _, uisf') <- uisfFun uisf (ctx, lastFocus, t-tprev, ev, ())
             let foc' = resetFocus foc
                 -- When we're in the middle of setting focus, don't set 
                 -- the graphic yet.  Wait until it's done, and then set it.
@@ -398,7 +403,7 @@ runUI p sf = do
               True -> deepseq graphic $ setGraphics w (graphic, True)
               False -> setGraphics w (graphic, False)
             atomicModifyIORef' tref (\tproc -> (mergeTP tproc' tproc, ()))
-            go tref w foc' uisf'
+            go tref w foc' t uisf'
     -- this getNextEvent' function is implementing a possible performance boost.
     -- TODO: Does this actually help at all?
     getNextEvent' w = do

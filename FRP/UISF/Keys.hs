@@ -66,7 +66,7 @@ data UIEvent =
   --  button.
   | Button {
      pt :: Point,
-     button :: MouseButton,
+     mbutton :: MouseButton,
      isDown :: Bool
     }
   -- | Every time the mouse moves, a MouseMove UIEvent will fire.

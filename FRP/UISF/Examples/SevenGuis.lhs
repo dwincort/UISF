@@ -202,27 +202,16 @@ string.
 The timer is very straightforward with UISF even though there is no 
 built-in "gauge" widget.  We'll start by defining one by using the 
 canvas' widget builder.  The widget will take the pair of 
-(elapsed time, total duration) and draw a block of the appropriate 
+(elapsed time, total duration) and draw a rectangle of the appropriate 
 size.  To use canvas', we supply a layout argument (stretchy in the 
 horizontal direction but fixed to 30 pixels in the vertical direction).
 
 > gauge :: Layout -> UISF (DeltaT, DeltaT) ()
 > gauge l = unique >>> canvas' l draw where
->   draw (x,t) (w,h) = block ((0,padding),(min w' $ round $ x*(fromIntegral w')/t,h-2*padding))
+>   draw (x,t) (w,h) = rectangleFilled ((0,padding),(min w' $ round $ x*(fromIntegral w')/t,h-2*padding))
 >       where w' = (w - 2*padding)
 
-Next, we make a short helper function for keeping track of elapsed time.  
-UISF provides "getTime", which provides the number of seconds since the 
-GUI started; here we write getDeltaTime, which uses a simple "delay" 
-operator to find how much time has gone by in the most recent clock cycle.
-
-> getDeltaTime :: UISF () DeltaT
-> getDeltaTime = proc _ -> do
->   t <- getTime -< ()
->   pt <- delay 0 -< t
->   returnA -< t - pt
-
-With these two helpers, the program is a snap.  Note once again that 
+With this, the program is a snap.  Note once again that 
 since the elapsed time "e" is being used directly in the GUI's output, 
 we must apply a delay to it to prevent an infinite recursion.
 
@@ -416,13 +405,13 @@ Now, we have the tools to make the circle canvas
 >       where 
 >         newLst = fromMaybe prevLst inpLst
 >         (clickEvts, focusCircle, mousePt, redraw) = case (evt, isJust inpLst) of
->           (Button pt True  True, d) -> ((Just pt, Nothing),  prevFC, prevPt, d)
->           (Button pt False True, d) -> ((Nothing, getSelectedCircle pt newLst), prevFC, prevPt, d)
+>           (Button pt LeftButton  True, d) -> ((Just pt, Nothing),  prevFC, prevPt, d)
+>           (Button pt RightButton True, d) -> ((Nothing, getSelectedCircle pt newLst), prevFC, prevPt, d)
 >           (MouseMove pt, d) -> let fc = getSelectedCircle pt newLst in ((Nothing, Nothing), fc, pt, prevFC /= fc || d)
 >           (_, d) -> ((Nothing, Nothing), getSelectedCircle prevPt newLst, prevPt, d)
 >     draw _ _ (cs,fc,_) = draw' cs fc
 >     draw' [] Nothing = nullGraphic
->     draw' [] (Just (p,r)) = withColor' gray2 $ circleFilled p r
+>     draw' [] (Just (p,r)) = withColor MediumBeige $ circleFilled p r
 >     draw' ((p,r):cs) fc = withColor Black (circleOutline p r) // draw' cs fc
 
 Lastly, we'll create the undo/redo functionality.  This is all pure 

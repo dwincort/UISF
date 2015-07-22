@@ -24,7 +24,7 @@ import FRP.UISF.Graphics
 import FRP.UISF.Keys
 import FRP.UISF.UITypes
 import FRP.UISF.UISF
-import FRP.UISF.AuxFunctions (SEvent, Time, timer, edge, delay, constA, concatA)
+import FRP.UISF.AuxFunctions (SEvent, Time, DeltaT, accumTime, timer, edge, delay, constA, concatA)
 
 import Control.Arrow
 import Data.Maybe (fromMaybe)
@@ -120,7 +120,7 @@ textbox startingVal = proc ms -> do
       ts <- textbox' -< maybe s id ms
   returnA -< ts
 
-{-# DEPRECATED textboxE "use textbox instead" #-}
+{-# DEPRECATED textboxE "As of UISF-0.4.0.0, use textbox instead" #-}
 textboxE = textbox
 
 -- | The textbox' variant of textbox contains no internal state about 
@@ -458,8 +458,8 @@ iSlider hori step (min, max) = mkSlider hori v2p p2v jump
 -- (value,time) event pairs, but since there can be zero or more points 
 -- at once, we use [] rather than 'SEvent' for the type.
 -- The values in the (value,time) event pairs should be between -1 and 1.
-realtimeGraph :: RealFrac a => Layout -> Time -> Color -> UISF [(a,Time)] ()
-realtimeGraph layout hist color = arr ((),) >>> first getTime >>>
+realtimeGraph :: RealFrac a => Layout -> DeltaT -> Color -> UISF [(a,Time)] ()
+realtimeGraph layout hist color = arr ((),) >>> first accumTime >>>
   mkWidget ([(0,0)],0) layout process draw
   where draw _              _ ([],        _) = nullGraphic
         draw ((x,y), (w,h)) _ (lst@(_:_), t) = translateGraphic (x,y) $ 

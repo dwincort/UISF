@@ -15,7 +15,7 @@ import Numeric (showHex)
 
 -- | This example displays the time from the start of the GUI application.
 timeEx :: UISF () ()
-timeEx = title "Time" $ getTime >>> display
+timeEx = title "Time" $ accumTime >>> display
 
 -- | This example shows off 'button's and state by presenting a plus and 
 -- minus button with a counter that is adjusted by them.

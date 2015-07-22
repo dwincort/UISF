@@ -21,7 +21,3 @@ Bugs and Performance
 - Add settability (but also a way to disable settability for performance reasons).
 - Address the common memory leaks (perhaps force delay to take NFData args and then deepseq them)
 - - Leak is noticeable even when just checking if a (MouseMove pt `inside` bbx) in a simple button
-
-Other:
-- remove the ArrowTime class and replace it with (ArrowReader Time) or something like that?
-- mergeE is basically a generic mappend (especially since everyone uses it that way anyway).  How about we remove mergeE entirely and define ~++ as mappend and have UISF export that by default

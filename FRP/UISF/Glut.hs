@@ -201,7 +201,7 @@ keyboardMouseCB chan key d modifiers (Position x y) = do
     (SpecialKey sk) -> 
       atomically $ writeTChan chan SKey{ skey = sk, modifiers = mods, isDown = down}
     (MouseButton mb) -> 
-      atomically $ writeTChan chan Button{ pt = p, button = mb, isDown = down}
+      atomically $ writeTChan chan Button{ pt = p, mbutton = mb, isDown = down}
 
 -- | When the mouse moves at all, add an event to the 'WindowData' for 
 --  external processing.

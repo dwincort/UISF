@@ -12,7 +12,6 @@
 module FRP.UISF.UITypes where
 
 import FRP.UISF.Graphics
-import FRP.UISF.AuxFunctions (mergeE)
 
 ------------------------------------------------------------
 -- * UI Types
@@ -70,7 +69,10 @@ nullTP = Nothing
 
 -- | A method for merging two termination procedures.
 mergeTP :: TerminationProc -> TerminationProc -> TerminationProc
-mergeTP = mergeE (>>)
+mergeTP Nothing     Nothing     = Nothing
+mergeTP le@(Just _) Nothing     = le
+mergeTP Nothing     re@(Just _) = re
+mergeTP (Just l)    (Just r)    = Just (l >> r)
 
 
 ------------------------------------------------------------
