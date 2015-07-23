@@ -29,7 +29,8 @@ module FRP.UISF.UISF (
     conjoin, unconjoin, 
     setLayout, setSize, pad, 
     -- * Execute UI Program
-    UIParams (..), defaultUIParams,
+    UIParams, defaultUIParams,
+    uiInitialize, uiClose, uiTitle, uiSize, uiInitFlow, uiTickDelay, uiCloseOnEsc, uiBackground,
     runUI, runUI'
 
 ) where
@@ -319,7 +320,7 @@ data UIParams = UIParams {
   , uiTitle :: String       -- ^ The UI window's title.
   , uiSize :: Dimension     -- ^ The size of the UI window.
   , uiInitFlow :: Flow      -- ^ The initial Flow setting.
-  , uiTickDelay :: Double   -- ^ How long the UI will sleep between clock 
+  , uiTickDelay :: DeltaT   -- ^ How long the UI will sleep between clock 
                             --   ticks if no events are detected.  This 
                             --   should be probably be set to O(milliseconds), 
                             --   but it can be set to 0 for better performance 
@@ -328,6 +329,14 @@ data UIParams = UIParams {
                             --   presses the escape key?
   , uiBackground :: RGB     -- ^ The default color of the UI window background.
 }
+
+instance Show UIParams where
+  show p = "{UIParams containing: title="++show (uiTitle p)++
+           ", size="++show (uiSize p)++
+           ", initial flow="++show (uiInitFlow p)++
+           ", tick delay="++show (uiTickDelay p)++
+           ", background color="++show (uiBackground p)++
+           (if uiCloseOnEsc p then ", and closes on ESC}" else ", and does not close on ESC}")
 
 -- | This is the default UIParams value and what is used in runUI'.
 defaultUIParams :: UIParams

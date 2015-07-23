@@ -91,8 +91,11 @@ instance NFData Color
 
 -- | RGB can be used to specify colors more precisely.  Create them with 
 --  one of the two smart constructors 'rgb' or 'rgbE'.
-newtype RGB = RGB (Float, Float, Float)
-  deriving (Eq, Show)
+newtype RGB = RGB (Int, Int, Int)
+  deriving (Eq)
+
+instance Show RGB where
+  show (RGB (r, g, b)) = "{R="++show r++",G="++show g++",B="++show b++"}"
 
 instance NFData RGB
 
@@ -100,18 +103,18 @@ instance NFData RGB
 --  but can be used by anyone.
 colorToRGB :: Color -> RGB
 colorToRGB Black   = RGB (0, 0, 0)
-colorToRGB Blue    = RGB (0, 0, 1)
-colorToRGB Green   = RGB (0, 1, 0)
-colorToRGB Cyan    = RGB (0, 1, 1)
-colorToRGB Red     = RGB (1, 0, 0)
-colorToRGB Magenta = RGB (1, 0, 1)
-colorToRGB Yellow  = RGB (1, 1, 0)
-colorToRGB White   = RGB (1, 1, 1)
+colorToRGB Blue    = RGB (0, 0, 255)
+colorToRGB Green   = RGB (0, 255, 0)
+colorToRGB Cyan    = RGB (0, 255, 255)
+colorToRGB Red     = RGB (255, 0, 0)
+colorToRGB Magenta = RGB (255, 0, 255)
+colorToRGB Yellow  = RGB (255, 255, 0)
+colorToRGB White   = RGB (255, 255, 255)
 colorToRGB VLightBeige = rgbE 0xf1 0xef 0xe2
 colorToRGB LightBeige  = rgbE 0xec 0xe9 0xd8
 colorToRGB MediumBeige = rgbE 0xac 0xa8 0x99
 colorToRGB DarkBeige   = rgbE 0x71 0x6f 0x64
--- In pervious versions, there was a color called "blue3".
+-- In previous versions, there was a color called "blue3".
 -- blue3 = rgbE 0x31 0x3c 0x79 --dark slate blue
 
 
@@ -121,13 +124,13 @@ colorToRGB DarkBeige   = rgbE 0x71 0x6f 0x64
 --  values fall outside the acceptable range, Nothing is returned.
 rgb :: (Integral r, Integral g, Integral b) => r -> g -> b -> Maybe RGB
 rgb r g b = do
-    r' <- c2f r
-    g' <- c2f g
-    b' <- c2f b
+    r' <- bound r
+    g' <- bound g
+    b' <- bound b
     return $ RGB (r',g',b')
   where
-    c2f :: (Integral c, Fractional f) => c -> Maybe f
-    c2f i = if i > 255 || i < 0 then Nothing else Just (fromIntegral i / 255)
+    bound :: (Integral i, Integral o) => i -> Maybe o
+    bound i = if i > 255 || i < 0 then Nothing else Just (fromIntegral i)
 
 -- | This is a version of 'rgb' that throws an error when a given 
 --  value falls outside the acceptable 0-255 range.  The error message 
@@ -140,7 +143,7 @@ rgbE r g b = case rgb r g b of
 
 -- | Use this to extract the values from an RGB color.
 extractRGB :: (Integral r, Integral g, Integral b) => RGB -> (r,g,b)
-extractRGB (RGB (r, g, b)) = (round $ 255 * r, round $ 255 * g, round $ 255 * b)
+extractRGB (RGB (r, g, b)) = (fromIntegral r, fromIntegral g, fromIntegral b)
 
 ------------------------------------------------------------
 -- Graphic
@@ -336,7 +339,8 @@ renderGraphicInOpenGL :: Dimension -> Graphic -> IO ()
 renderGraphicInOpenGL _ NoGraphic = return ()
 
 renderGraphicInOpenGL s (GColor (RGB (r,g,b)) graphic) = (GL.color color >> renderGraphicInOpenGL s graphic) where
-  color = GL.Color3 (realToFrac r) (realToFrac g) (realToFrac b :: GLfloat)
+  color = GL.Color3 (c2f r) (c2f g) (c2f b :: GLfloat)
+  c2f i = fromIntegral i / 255
 
 renderGraphicInOpenGL _ (GText (x,y) str) = GL.preservingMatrix $ do
 --  -- These lines are used for Stroke fonts (scale and translate values may need to be adjusted)

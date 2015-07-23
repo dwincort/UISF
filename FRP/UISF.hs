@@ -3,8 +3,8 @@ module FRP.UISF
     UISF 
   , runUI'              -- :: UISF () () -> IO ()
   , runUI               -- :: UIParams -> UISF () () -> IO ()
-  , UIParams (..)       -- data UIParams = UIParams { ... }
-  , defaultUIParams     -- :: UIParams
+  , UIParams, defaultUIParams
+  , uiInitialize, uiClose, uiTitle, uiSize, uiInitFlow, uiTickDelay, uiCloseOnEsc, uiBackground
   , Dimension           -- type Dimension = (Int, Int)
     -- Widgets
   , label               -- :: String -> UISF a a
