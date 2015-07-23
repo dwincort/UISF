@@ -17,7 +17,6 @@ description:
 extra-source-files:
         ReadMe.txt,
         changelog.txt,
-        FRP/UISF/Examples/EnableGUI.hs
         FRP/UISF/Examples/SevenGuis.lhs
         FRP/UISF/Examples/Pinochle.hs
         FRP/UISF/Examples/fft.hs
