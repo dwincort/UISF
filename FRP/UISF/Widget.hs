@@ -115,9 +115,13 @@ withDisplay sf = proc a -> do
 --
 --  The static argument provides the textbox with initial text.
 textbox :: String -> UISF (SEvent String) String
-textbox startingVal = proc ms -> do
+textbox = textField 1
+
+-- | TextField lets you specify a multiline textbox (and eventually type newlines) 
+textField :: Int -> String -> UISF (SEvent String) String
+textField y startingVal = proc ms -> do
   rec s  <- delay startingVal -< ts
-      ts <- textbox' -< maybe s id ms
+      ts <- textbox' y -< maybe s id ms
   returnA -< ts
 
 {-# DEPRECATED textboxE "As of UISF-0.4.0.0, use textbox instead" #-}
@@ -126,8 +130,8 @@ textboxE = textbox
 -- | The textbox' variant of textbox contains no internal state about 
 --  the text it displays.  Thus, it must be paired with rec and delay 
 --  and used bidirectionally to be effective.
-textbox' :: UISF String String
-textbox' = focusable $ 
+textbox' :: Int -> UISF String String
+textbox' y = focusable $ 
   conjoin $ withCTX $ proc (ctx,s) -> do
     inFocus <- isInFocus -< ()
     k <- getEvents -< ()
@@ -146,15 +150,20 @@ textbox' = focusable $
               _ -> Nothing
     returnA -< s'
   where
-    minh = 16 + padding * 2
+    --cla/b is the length of the character before or after cursor
+    --(newlines and other specials are two)
+    clb i s = if (take 2 . drop (i-2) $ s) == "\\n" then 2 else 1
+    cla i s = if (take 2 . drop (i) $ s) == "\\n" then 2 else 1
+    minh = (y*16) + padding * 2
     displayLayout = makeLayout (Stretchy 8) (Fixed minh)
     update s  i _ (Key c _ True)          = (take i s ++ [c] ++ drop i s, i+1)
-    update s  i _ (SKey KeyBackspace _ True) = (take (i-1) s ++ drop i s, max (i-1) 0)
-    update s  i _ (SKey KeyDelete    _ True) = (take i s ++ drop (i+1) s, i)
-    update s  i _ (SKey KeyLeft      _ True) = (s, max (i-1) 0)
-    update s  i _ (SKey KeyRight     _ True) = (s, min (i+1) (length s))
+    update s  i _ (SKey KeyBackspace _ True) = (take (i-(clb i s)) s ++ drop i s, max (i-(clb i s)) 0)
+    update s  i _ (SKey KeyDelete    _ True) = (take i s ++ drop (i+(cla i s)) s, i)
+    update s  i _ (SKey KeyLeft      _ True) = (s, max (i-(clb i s)) 0)
+    update s  i _ (SKey KeyRight     _ True) = (s, min (i+(cla i s)) (length s))
     update s _i _ (SKey KeyEnd       _ True) = (s, length s)
     update s _i _ (SKey KeyHome      _ True) = (s, 0)
+    update s  i _ (SKey KeyEnter     _ True) = (take i s ++ "\\n" ++ drop i s, i+2)
     update s _i c (Button (x,_) LeftButton True) = (s, min (length s) $ (x - xoffset c) `div` 8)
     update s  i _ _                        = (s, max 0 $ min i $ length s)
     drawCursor (False, _) _ = nullGraphic

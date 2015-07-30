@@ -12,6 +12,7 @@ module FRP.UISF
   , display             -- :: Show a => UISF a ()
   , withDisplay         -- :: Show b => UISF a b -> UISF a b
   , textbox             -- :: String -> UISF (Event String) String
+  , textField           -- :: Int -> String -> UISF (Event String) String
   , textboxE            -- :: String -> UISF (Event String) String
   , title               -- :: String -> UISF a b -> UISF a b
   , spacer              -- :: UISF a a
