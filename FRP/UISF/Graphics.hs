@@ -345,7 +345,7 @@ renderGraphicInOpenGL s (GColor (RGB (r,g,b)) graphic) = (GL.color color >> rend
 
 renderGraphicInOpenGL _ (GText (x,y) str) = 
   let
-    lines = zip (split "\\n" str) [1..]
+    lines = zip (split ['\n'] str) [1..]
 -- This code is used for Stroke fonts (scale and translate values may need to be adjusted)
 --  GL.translate (vector (x, y+16))
 --  GL.scale 0.1 (-0.1) (1::GLfloat)

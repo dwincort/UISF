@@ -28,6 +28,8 @@ import FRP.UISF.AuxFunctions (SEvent, Time, DeltaT, accumTime, timer, edge, dela
 
 import Control.Arrow
 import Data.Maybe (fromMaybe)
+import Data.List.Utils
+import Data.List
 
 ------------------------------------------------------------
 -- Shorthand and Helper Functions
@@ -144,16 +146,16 @@ textbox' y = focusable $
     rec willDraw <- delay True -< willDraw'
         let willDraw' = maybe willDraw (const $ not willDraw) b --if isJust b then not willDraw else willDraw
     canvas' displayLayout drawCursor -< case (inFocus, b, b', i == iPrev) of
-              (True,  Just _, _, _) -> Just (willDraw, i)
-              (True,  _, _, False)  -> Just (willDraw, i)
-              (False, _, Just _, _) -> Just (False, i)
+              (True,  Just _, _, _) -> Just (s, willDraw, i)
+              (True,  _, _, False)  -> Just (s, willDraw, i)
+              (False, _, Just _, _) -> Just (s, False, i)
               _ -> Nothing
     returnA -< s'
   where
     --cla/b is the length of the character before or after cursor
-    --(newlines and other specials are two)
-    clb i s = if (take 2 . drop (i-2) $ s) == "\\n" then 2 else 1
-    cla i s = if (take 2 . drop (i) $ s) == "\\n" then 2 else 1
+    --this allows to skip over newlines and other unprintable specials 
+    clb i s = if (take 2 . drop (i-2) $ s) == ['\n'] then 2 else 1
+    cla i s = if (take 2 . drop (i) $ s) == ['\n'] then 2 else 1
     minh = (y*16) + padding * 2
     displayLayout = makeLayout (Stretchy 8) (Fixed minh)
     update s  i _ (Key c _ True)          = (take i s ++ [c] ++ drop i s, i+1)
@@ -161,16 +163,26 @@ textbox' y = focusable $
     update s  i _ (SKey KeyDelete    _ True) = (take i s ++ drop (i+(cla i s)) s, i)
     update s  i _ (SKey KeyLeft      _ True) = (s, max (i-(clb i s)) 0)
     update s  i _ (SKey KeyRight     _ True) = (s, min (i+(cla i s)) (length s))
+    update s  i _ (SKey KeyUp        _ True) = (s, (fromMaybe 0 $ elemRIndex '\n' $ take i s))
+    update s  i _ (SKey KeyDown      _ True) = (s, case elemIndex '\n' $ drop (i) s of
+                                                     Just x -> i + x + 1 
+                                                     Nothing -> i)
     update s _i _ (SKey KeyEnd       _ True) = (s, length s)
     update s _i _ (SKey KeyHome      _ True) = (s, 0)
-    update s  i _ (SKey KeyEnter     _ True) = (take i s ++ "\\n" ++ drop i s, i+2)
+    update s  i _ (SKey KeyEnter     _ True) = (take i s ++ ['\n'] ++ drop i s, i+1)
     update s _i c (Button (x,_) LeftButton True) = (s, min (length s) $ (x - xoffset c) `div` 8)
     update s  i _ _                        = (s, max 0 $ min i $ length s)
-    drawCursor (False, _) _ = nullGraphic
-    drawCursor (True, i) (w,_h) = 
-        let linew = padding + i*8
+    drawCursor (s,False, _) _ = nullGraphic
+    drawCursor (s,True, i) (w,_h) = 
+        let
+          i' = case elemRIndex '\n' $ take i s of
+            Just x -> (length $ drop x $ take i s)-1
+            Nothing -> i
+          linew = padding + i'*8
+          nlcount = max 0 ((length $ split ['\n'] (take i s))-1)
+          offset = nlcount*11
         in if linew > w then nullGraphic else withColor Black $
-            line (linew, padding) (linew, 16+padding)
+            line (linew, padding+offset) (linew, 16+padding+offset)
     xoffset = fst . fst . bounds
 
 -----------
