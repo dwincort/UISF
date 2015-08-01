@@ -22,6 +22,9 @@ import FRP.UISF.UISF
 import FRP.UISF.AuxFunctions (SEvent, Time, DeltaT, accumTime, timer, edge, delay, constA, concatA)
 
 import Control.Arrow
+import Data.Maybe (fromMaybe)
+import Data.List.Utils
+import Data.List
 
 ------------------------------------------------------------
 -- * Widgets
@@ -104,9 +107,13 @@ withDisplay sf = proc a -> do
 --
 --  The static argument provides the textbox with initial text.
 textbox :: String -> UISF (SEvent String) String
-textbox startingVal = proc ms -> do
+textbox = textField 1
+
+-- | TextField lets you specify a multiline textbox (and eventually type newlines) 
+textField :: Int -> String -> UISF (SEvent String) String
+textField y startingVal = proc ms -> do
   rec s  <- delay startingVal -< ts
-      ts <- textbox' -< maybe s id ms
+      ts <- textbox' y -< maybe s id ms
   returnA -< ts
 
 {-# DEPRECATED textboxE "As of UISF-0.4.0.0, use textbox instead" #-}
@@ -115,8 +122,8 @@ textboxE = textbox
 -- | The textbox' variant of textbox contains no internal state about 
 --  the text it displays.  Thus, it must be paired with rec and delay 
 --  and used bidirectionally to be effective.
-textbox' :: UISF String String
-textbox' = focusable $ 
+textbox' :: Int -> UISF String String
+textbox' y = focusable $ 
   conjoin $ withCTX $ proc (ctx,s) -> do
     inFocus <- isInFocus -< ()
     k <- getEvents -< ()
@@ -135,22 +142,37 @@ textbox' = focusable $
               _ -> Nothing
     returnA -< s'
   where
-    minh = textHeight "" + padding * 2
-    displayLayout = makeLayout (Stretchy $ padding * 2) (Fixed minh)
-    update s  i _ (Key c _ True)             = let (t,d) = splitAt i s in (t ++ c:d, i+1)
-    update s  i _ (SKey KeyBackspace _ True) = let (t,d) = splitAt (i-1) s in (t ++ drop 1 d, max (i-1) 0)
-    update s  i _ (SKey KeyDelete    _ True) = let (t,d) = splitAt i s in (t ++ drop 1 d, i)
-    update s  i _ (SKey KeyLeft      _ True) = (s, max (i-1) 0)
-    update s  i _ (SKey KeyRight     _ True) = (s, min (i+1) (length s))
-    update s _i _ (SKey KeyEnd       _ True) = (s, length s)
-    update s _i _ (SKey KeyHome      _ True) = (s, 0)
-    update s _i c (Button (x,_) LeftButton True) = (s, min (length s) (length $ safehead $ chunkText s (x - xoffset c)))
-    update s  i _ _                        = (s, max 0 $ min i $ length s)
+    --cla/b is the length of the character before or after cursor
+    --this allows to skip over newlines and other unprintable specials 
+    clb i s = if (take 2 . drop (i-2) $ s) == ['\n'] then 2 else 1
+    cla i s = if (take 2 . drop (i) $ s) == ['\n'] then 2 else 1
+    texth = (textHeight "") + padding * 2
+    displayLayout = makeLayout (Stretchy $ padding * 2) (Fixed $ y*texth)
+    update s i c ev = let (clav,clbv) = (cla i s, clb i s) in case ev of
+      (Key c _ True)             -> let (t,d) = splitAt i s in (t ++ c:d, i+1)
+      (SKey KeyBackspace _ True) -> let (t,d) = splitAt (i-clbv) s in (t ++ drop clbv d, max (i-clbv) 0)
+      (SKey KeyDelete    _ True) -> let (t,d) = splitAt i s in (t ++ drop clav d, i)
+      (SKey KeyLeft      _ True) -> (s, max (i-clbv) 0)
+      (SKey KeyRight     _ True) -> (s, min (i+clav) (length s))
+      (SKey KeyUp        _ True) -> (s, (fromMaybe 0 $ elemRIndex '\n' $ take i s))
+      (SKey KeyDown      _ True) -> (s, case elemIndex '\n' $ drop (i) s of
+                                                Just x -> i + x + 1 
+                                                Nothing -> i)
+      (SKey KeyEnd       _ True) -> (s, length s)
+      (SKey KeyHome      _ True) -> (s, 0)
+      (SKey KeyEnter     _ True) -> let (t,d) = splitAt i s in (t ++ '\n':d, i+1) 
+      (Button (x,_) LeftButton True) -> (s, min (length s) (length $ safehead $ chunkText s (x - xoffset c)))
+      _                          -> (s, max 0 $ min i $ length s)
     drawCursor (False, _, _) _ = nullGraphic
     drawCursor (True, i, s) (w,_h) = 
-        let linew = 1+padding + textWidth (take i s)
+        let i' = case elemRIndex '\n' $ take i s of
+                Just x -> (length $ drop x $ take i s)-1
+                Nothing -> i
+            linew = 1+padding + textWidth (take i' s)
+            nlcount = max 0 ((length $ split ['\n'] (take i s))-1)
+            offset = nlcount*11
         in if linew > w then nullGraphic else withColor Black $
-            line (linew, padding) (linew, minh-padding)
+            line (linew, padding+offset) (linew, texth-padding+offset)
     xoffset = fst . fst . bounds
     safehead [] = ""
     safehead (x:_) = x

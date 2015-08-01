@@ -33,6 +33,7 @@ import Graphics.Rendering.OpenGL (($=), GLfloat)
 import qualified Graphics.UI.GLUT as GLUT
 import Data.Ix (Ix)
 import Control.DeepSeq
+import Data.List.Utils
 
 {- $graphics
 This module provides an abstract representation for graphics in the GUI 
@@ -365,14 +366,17 @@ renderGraphicInOpenGL s (GColor (RGB (r,g,b)) graphic) = (GL.color color >> rend
   color = GL.Color3 (c2f r) (c2f g) (c2f b :: GLfloat)
   c2f i = fromIntegral i / 255
 
-renderGraphicInOpenGL _ (GText (x,y) str) = GL.preservingMatrix $ do
---  -- These lines are used for Stroke fonts (scale and translate values may need to be adjusted)
---  GL.translate (vector (x, y+12))
---  GL.scale 0.12 (-0.12) (1::GLfloat)
---  GLUT.renderString GLUT.Roman str
-  -- These lines are used for Bitmap fonts (raster offset values may need to be adjusted)
-  GL.currentRasterPosition $= GLUT.Vertex4 (fromIntegral x) (fromIntegral y + 11) 0 1
-  GLUT.renderString GLUT.Fixed9By15 str
+renderGraphicInOpenGL _ (GText (x,y) str) = 
+  let lines = zip (split ['\n'] str) [1..]
+      drawLine (s,i) = do 
+--      This code is used for Bitmap fonts (raster offset values may need to be adjusted)
+        GL.currentRasterPosition $= GLUT.Vertex4 (fromIntegral x) (fromIntegral y + i*11) 0 1
+        GLUT.renderString GLUT.Fixed9By15 s
+--      This code is used for Stroke fonts (scale and translate values may need to be adjusted)
+--        GL.translate (vector (x, y+16*(i+1)))
+--        GL.scale 0.1 (-0.1) (1::GLfloat)
+--        GLUT.renderString GLUT.MonoRoman s
+  in GL.preservingMatrix $ mapM_ drawLine lines
 
 renderGraphicInOpenGL _ (GPolyLine ps) = 
   GL.renderPrimitive GL.LineStrip (mapM_ vertex ps)
