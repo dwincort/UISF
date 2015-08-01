@@ -27,7 +27,7 @@ We declare the module name and import UISF
 > import Data.Time.Format       -- For Flight Booker
 > import Data.Maybe             -- For Flight Booker, Circle Draw
 > 
-> import FRP.UISF.Widget        -- For Timer, Circle Draw
+> import FRP.UISF.WidgetConstruction -- For Timer, Circle Draw
 > 
 > import Data.List (isInfixOf)  -- For CRUD
 > import Data.Char (toLower)    -- For CRUD
@@ -115,7 +115,7 @@ so we do this twice, once for each textbox.
 >         c2f :: Double -> Int
 >         c2f c = round $ c * (9/5) + 32
 >
-> tempConvert = runUI (defaultUIParams {uiSize=(400, 24), uiTitle="Temp Converter"}) tempConvertSF
+> tempConvert = runUI (defaultUIParams {uiSize=(440, 24), uiTitle="Temp Converter"}) tempConvertSF
 > gui2 = tempConvert
 
 
@@ -169,7 +169,7 @@ string.
 >     choice <- radio ["one-way flight","return flight"] 0 -< ()
 >     t1 <- timeInputTextbox tl format (formatTime tl format currentTime) -< ()
 >     t2 <- case choice of
->             1 -> timeInputTextbox tl format (formatTime tl format currentTime) -< ()
+>             1 -> timeInputTextbox tl format (formatTime tl format nextweek) -< ()
 >             _ -> label "" -< Nothing
 >     resetText <- unique -< (choice, t1, t2)
 >     b <- if (choice == 0 && isJust t1) || (choice == 1 && verifyGreater t1 t2)
@@ -180,6 +180,7 @@ string.
 >     resultStr <- hold "" -< b
 >     displayStr -< resultStr
 >   where format ="%Y.%m.%d"
+>         nextweek = currentTime { utctDay = addDays 7 $ utctDay currentTime }
 >         -- outText formats the data for a booking confirmation
 >         outText tl format 0 (Just t1) _  = "You have booked a one-way flight on " 
 >             ++ (formatTime tl format t1) ++ "."
@@ -297,21 +298,20 @@ outside of the brackets.  It's better than if we separated everything,
 in which case the banana bracketed code would not inherit its parent's 
 scope either, but still, it is less than ideal.
 
-We start by asking for the filter text and then using banana brackets 
-to define a "leftRight" layout portion.
+We start by asking for the filter text, filtering the database, and then 
+using banana brackets to define a "leftRight" layout portion.
 
 > crudSF :: Database NameEntry -> UISF () ()
 > crudSF initnamesDB = proc _ -> do
 >   rec
 >     fStr <- leftRight $ label "Filter text: " >>> textbox "" -< Nothing
->     (i, db, fdb, nameData) <- (| leftRight (do
+>     let fdb = filter (filterFun fStr) db
+>     (i, nameData) <- (| leftRight (do
 
 This leftRight portion will have a listbox on the left and then a 
 topDown portion on the right that will be for entering name data.
 
->         rec i <- listbox -< (fdb, i')
->             db <- delay initnamesDB -< db'
->             let fdb = filter (filterFun fStr) db
+>         i <- listbox' -< (fdb, i')
 >         nameData <- (| topDown (do
 
 We add two textboxes for the first name and surname strings and 
@@ -320,10 +320,10 @@ then set them to update whenever one of the listbox items is selected.
 >             rec nameStr <- leftRight $ label "Name:    " >>> textbox "" -< nameStr'
 >                 surnStr <- leftRight $ label "Surname: " >>> textbox "" -< surnStr'
 >                 iUpdate <- unique -< i
->                 let nameStr' = fmap (const $ firstName ((filter (filterFun fStr) db') `at` i')) iUpdate
->                     surnStr' = fmap (const $ lastName  ((filter (filterFun fStr) db') `at` i')) iUpdate
+>                 let nameStr' = fmap (const $ firstName (fdb `at` i)) iUpdate
+>                     surnStr' = fmap (const $ lastName  (fdb `at` i)) iUpdate
 >             returnA -< NameEntry nameStr surnStr) |)
->         returnA -< (i, db, fdb, nameData)) |)
+>         returnA -< (i, nameData)) |)
 
 Finally, we make the three buttons, which we can do all at once with 
 arrow combinators.  Based on button presses, we update the database.
@@ -331,11 +331,11 @@ arrow combinators.  Based on button presses, we update the database.
 >     buttons <- leftRight $ (edge <<< button "Create") &&& 
 >                            (edge <<< button "Update") &&& 
 >                            (edge <<< button "Delete") -< ()
->     let (db', i') = case buttons of
+>     (db, i') <- delay (initnamesDB, -1) -< case buttons of
 >             (Just _, (_, _))             -> (db ++ [nameData], length fdb)
 >             (Nothing, (Just _, _))       -> (updateDB (filterFun fStr) i nameData db, i)
 >             (Nothing, (Nothing, Just _)) -> (deleteFromDB (filterFun fStr) i db,
->                                             if i == length fdb - 1 then length fdb - 2 else i)
+>                                             if i == length fdb - 1 then i - 1 else i)
 >             _ -> (db, i)
 >   returnA -< ()
 >   where

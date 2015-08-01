@@ -1,17 +1,11 @@
 UISF FUTURE FEATURES/CHANGES
 
-Graphics and Widgets:
-- make a data type UIText: UIText may be expanded (for instance with font, size, etc.) but is essentially a list of (textColor, bgColor, font, size, String).  Label takes a UIText, and certain versions of textbox work with UIText
+Graphics and Widgets
+- Multiple font support.
+- make a data type UIText: UIText may be expanded (for instance with font, size, etc.) but is essentially a list of (textColor, bgColor, font, size, String).  Label takes a UIText, and certain versions of textbox work with UIText.  Use OverloadedStrings to make this super effective.  A function UIText -> Dimension which calculates how many pixels tall and wide the text will render.
 - mkBasicWidget should be (a -> b) and its draw routine should take either a or b or both.  Then, I can make a dynamic label that prints its input.  Or maybe not.
 - Consider adding a refresh signal of some sort that is automatically provided to widgets that just "re-emerge" from an unused branch of arrow choice.  That way, if they were left in an odd state when the switch happens, they can be normal when they come back.  Alternatively, perhaps widgets can be coded so that they can gracefully fix themselves even when given a NoUIEvent
-- The listbox widget is not standard.  It should probably take an event stream rather than a continuous one (more in line with the other S widgets), and I'm not sure I like that it has a built-in delay on its output (but I don't know if there are ramifications to that).
 - Like the 'S' widgets, perhaps I could make 'D' widgets which are dynamic (e.g. a button or label with dynamic text, a radio with dynamic options, etc).  
-- Incorporate Jadon's widgets
-
-Asynchrony
-- make the output of asyncC (and asyncC') be monoidal
-- Make a version of asyncE that can perform an IO computation.
-- Explore using forkIO, forkOS, and forkOn for async functions.
 
 Testing
 - make a cabal "test-suite" (or second library or something like that?) that compiles the various example files.
@@ -21,3 +15,7 @@ Bugs and Performance
 - Add settability (but also a way to disable settability for performance reasons).
 - Address the common memory leaks (perhaps force delay to take NFData args and then deepseq them)
 - - Leak is noticeable even when just checking if a (MouseMove pt `inside` bbx) in a simple button
+- Make the underlying arrow structure *NOT* an automaton.  Perhaps performance would get better if it were instead some sort of ArrowState business with manual, per-tick feedback (i.e. built-in settability)
+
+Other
+- Remove (deprecate) eventBuffer from the library (add it to Euterpea where it belongs)

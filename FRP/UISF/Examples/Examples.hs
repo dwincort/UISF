@@ -15,7 +15,7 @@ import Numeric (showHex)
 
 -- | This example displays the time from the start of the GUI application.
 timeEx :: UISF () ()
-timeEx = title "Time" $ accumTime >>> display
+timeEx = title "Time" $ accumTime >>> display <<< spacer
 
 -- | This example shows off 'button's and state by presenting a plus and 
 -- minus button with a counter that is adjusted by them.
@@ -47,7 +47,7 @@ checkboxEx = title "Checkboxes" $ topDown $ proc _ -> do
 
 -- | This example shows off the 'radio' button widget.
 radioButtonEx :: UISF () ()
-radioButtonEx = title "Radio Buttons" $ topDown $ radio list 0 >>> arr (list!!) >>> displayStr
+radioButtonEx = title "Radio Buttons" $ topDown $ radio list 0 >>> arr (list!!) >>> displayStr >>> spacer
   where
     list = ["apple", "orange", "banana"]
 
@@ -95,6 +95,6 @@ textboxdemo = title "Saving Text" $ topDown $ proc _ -> do
 -- elements, and pressing shift-tab cycles in reverse.
 main :: IO ()
 main = runUI (defaultUIParams {uiSize=(500, 500)}) $ 
-  (leftRight $ (bottomUp $ timeEx >>> buttonEx) >>> (topDown $ checkboxEx) >>> radioButtonEx) >>>
+  (leftRight $ (bottomUp $ timeEx >>> buttonEx) >>> checkboxEx >>> radioButtonEx) >>>
   (leftRight $ shoppinglist >>> colorDemo) >>> textboxdemo
 

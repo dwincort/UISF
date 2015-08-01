@@ -9,13 +9,12 @@
 --
 -- Auxiliary functions for use with UISF or other arrows.
 
-{-# LANGUAGE Arrows, ScopedTypeVariables, TupleSections, FlexibleContexts #-}
+{-# LANGUAGE Arrows, TupleSections, FlexibleContexts #-}
 
 module FRP.UISF.AuxFunctions (
     -- * Types
     SEvent, Time, DeltaT, 
     getDeltaT, accumTime, 
-    ArrowIO(..),
     -- * Useful SF Utilities (Mediators)
     constA, constSF, 
     edge, 
@@ -25,8 +24,7 @@ module FRP.UISF.AuxFunctions (
     concatA, runDynamic, foldA, foldSF, 
     maybeA, evMap, 
     -- * Delays and Timers
-    delay, 
-    -- | delay is a unit delay.  It is exactly the delay from ArrowCircuit.
+    ArrowCircuit(..), 
     vdelay, fdelay, 
     vcdelay, fcdelay, 
     timer, genEvents, 
@@ -35,27 +33,17 @@ module FRP.UISF.AuxFunctions (
     
 --    (=>>), (->>), (.|.),
 --    snapshot, snapshot_,
-
-    -- * Signal Function Asynchrony
-    -- $asynchrony
-    Automaton(..), 
-    asyncV, asyncE, asyncEOn, asyncC, asyncC', unsafeAsyncIO, unsafeAsyncIOOn
 ) where
 
 import Prelude hiding ((.), id)
 import Control.Category
 import Control.Arrow
 import Control.Arrow.Operations
-import Control.Arrow.Transformer.Automaton
 import Data.Sequence (empty, (<|), (|>), (><), 
                       viewl, ViewL(..), viewr, ViewR(..))
 import qualified Data.Sequence as Seq
 import Data.Maybe (listToMaybe)
 
-import Control.Concurrent
-import Data.IORef
-import Data.Foldable (toList)
-import Control.DeepSeq
 
 
 --------------------------------------
@@ -79,16 +67,6 @@ getDeltaT = readState
 --  getDeltaT.  Thus, it is the "accumulated" time.
 accumTime :: (ArrowCircuit a, ArrowReader DeltaT a) => a b Time
 accumTime = getDeltaT >>> arr (Just . (+)) >>> accum 0
-
--- | Instances of the ArrowIO class have an arrowized ability to 
---   perform IO actions.
-class Arrow a => ArrowIO a where
-  -- | The liftAIO function lifts an IO action into an arrow.
-  liftAIO :: (b -> IO c) -> a b c
-  -- | The initialAIO function performs an IO action once upon the 
-  --   initialization of the arrow and then uses the result of that 
-  --   action to generate the arrow itself.
-  initialAIO :: IO d -> (d -> a b c) -> a b c
 
 --------------------------------------
 -- Useful SF Utilities (Mediators)
@@ -136,7 +114,7 @@ hold x = arr (fmap const) >>> accum x
 -- | Now is a signal function that produces one event and then forever 
 --   after produces nothing.  It is essentially an impulse function.
 now :: ArrowCircuit a => a () (SEvent ())
-now = arr (const Nothing) >>> delay (Just ())
+now = constA Nothing >>> delay (Just ())
 
 {-# DEPRECATED mergeE "As of UISF-0.4.0.0, mergeE is being removed as it's basically just mappend from Monoid." #-}
 -- | mergeE merges two events with the given resolution function.
@@ -436,220 +414,5 @@ snapshot :: SEvent a -> b -> SEvent (a,b)
 snapshot = flip $ fmap . flip (,)
 snapshot_ :: SEvent a -> b -> SEvent b
 snapshot_ = flip $ fmap . const -- same as ->>
-
-
-
---------------------------------------
--- Signal Function Asynchrony
---------------------------------------
-
-{- $asynchrony
-Due to the ability for ArrowIO arrows to perform IO actions, they are 
-obviously not guaranteed to be pure, and thus when we run them, we say 
-that they run \"in real time\".  This means that the time between two 
-samples can vary and is inherently unpredictable.
-
-However, there are cases when we would like more control over the timing 
-of certain arrowized computations.  For instance, sometimes we have a 
-pure computation that we would like to run on a simulated clock.  This 
-computation will expect to produce values at specific intervals, and 
-because it's pure, that expectation can sort of be satisfied.
-
-To achieve this, we allow these sub-computations to be performed 
-asynchronously.  The following functions behave subtly differently 
-to exhibit different forms of asynchrony for different use cases.
--}
-
--- | The asyncV functions is for \"Virtual time\" asynchrony.  The 
---   embedded signal function is given along with an expected 
---   clockrate, and the output conforms to that clockrate as well as it 
---   can.
---   
---   The clockrate is the simulated rate of the input signal function.
---   The buffer is the amount of time the given signal function is 
---   allowed to get ahead of real time.  The threadHandler is where the 
---   ThreadId of the forked thread is sent.
---
---   The output signal function takes and returns values in real time.  
---   The input must be paired with time, and the return values are the 
---   list of bs generated in the given time step, each time stamped.  
---   Note that the returned list may be long if the clockrate is much 
---   faster than real time and potentially empty if it's slower.
---   Note also that the caller can check the time stamp on the element 
---   at the end of the list to see if the inner, \"simulated\" signal 
---   function is performing as fast as it should.
-asyncV :: (ArrowIO a, NFData c) => 
-          Double             -- ^ Clockrate
-       -> DeltaT             -- ^ Amount of time to buffer
-       -> (ThreadId -> a () ()) -- ^ The thread handler
-       -> (Automaton (->) b c)      -- ^ The automaton to convert to realtime
-       -> a (b, Time) [(c, Time)]
-asyncV clockrate buffer threadHandler sf = initialAIO iod darr where
-  iod = do
-    inp <- newEmptyMVar
-    out <- newIORef empty
-    timevar <- newEmptyMVar
-    tid <- forkIO $ worker inp out timevar 1 1 sf
-    return (tid, inp, out, timevar)
-  darr (tid, inp, out, timevar) = proc (b,t) -> do
-    _ <- threadHandler tid -< ()
-    _ <- liftAIO (\b -> tryTakeMVar inp >> putMVar inp b) -< b -- send the worker the new input
-    _ <- liftAIO (tryPutMVar timevar) -< t  -- update the time for the worker
-    c <- liftAIO (atomicModifyIORef out) -< Seq.spanl (\(_,t0) -> t >= t0) --collect ready results
-    returnA -< toList c
-  -- worker processes the inner, "simulated" signal function.
-  worker inp out timevar t count (Automaton sf) = do
-    b <- readMVar inp     -- get the latest input
-    let (c, sf') = sf b   -- do the calculation
-    s <- deepseq c $ atomicModifyIORef out (\s -> (s |> (c, fromIntegral count/clockrate), s))
-    t' <- if Seq.length s > 0 && snd (seqLastElem s) >= t+buffer then takeMVar timevar else return t
-    worker inp out timevar t' (count+1) sf'
-  seqLastElem s = Seq.index s (Seq.length s - 1)
-
-
-
-asyncE t = asyncEHelper forkIO t
-asyncEOn n t = asyncEHelper (forkOn n) t
-
-
--- | The asyncE (E for \"Event\") function takes a signal function (an Automaton) and converts 
---   it into an asynchronous event-based signal function usable in a ArrowIO signal 
---   function context.  The output arrow takes events of type a, feeds them to 
---   the asynchronously running input signal function, and returns events with the output 
---   b whenever they are ready.  The input signal function is expected to run slowly 
---   compared to the output one, but it is capable of running just as fast.
-asyncEHelper :: (ArrowIO a, ArrowLoop a, ArrowCircuit a, ArrowChoice a, NFData c) => 
-          (IO () -> IO ThreadId)
-       -> (ThreadId -> a () ()) -- ^ The thread handler
-       -> (Automaton (->) b c)  -- ^ The automaton to convert to asynchronize
-       -> a (SEvent b) (SEvent c)
-asyncEHelper frk threadHandler sf = initialAIO iod darr where
-  iod = do
-    inp <- newIORef empty
-    out <- newIORef empty
-    proceed <- newEmptyMVar
-    tid <- frk $ worker proceed inp out sf
-    return (tid, proceed, inp, out)
-  -- count should start at 0
-  darr (tid, proceed, inp, out) = proc eb -> do
-    _ <- threadHandler tid -< ()
-    case eb of
-      Just b -> 
-        liftAIO (\b -> atomicModifyIORef inp (\s -> (s |> b, ())) >> tryPutMVar proceed ()) -< b
-      Nothing -> returnA -< False
-    c <- liftAIO (const $ atomicModifyIORef out seqRestHead) -< ()
-    returnA -< c
-  -- worker processes the inner, "simulated" signal function.
-  -- worker :: MVar () -> IORef (Seq a) -> IORef (Seq b) -> Automaton a b -> IO ()
-  worker proceed inp out (Automaton sf) = do
-    eb <- atomicModifyIORef inp seqRestHead
-    case eb of
-      Nothing -> takeMVar proceed >> worker proceed inp out (Automaton sf)
-      Just b -> do
-        let (c, sf') = sf b     -- do the calculation
-        deepseq c $ atomicModifyIORef out (\s -> (s |> c, ()))
-        worker proceed inp out sf'
-  seqRestHead s = case viewl s of
-      EmptyL  -> (s,  Nothing)
-      a :< s' -> (s', Just a)
-
--- | The asyncC (C for \"Continuous time\") function allows a continuous 
---   signal function to run as fast as it can asynchronously.  There are 
---   no guarantees that all input data make it to the asynchronous signal 
---   function; if this is required, asyncE should be used instead.  
---   Rather, the embedded signal function runs as fast as it can on 
---   whatever value it has most recently seen.  Its results are 
---   bundled together in a list to be returned to the main signal 
---   function.
-asyncC :: (ArrowIO a, NFData c) => 
-          (ThreadId -> a () ()) -- ^ The thread handler
-       -> (Automaton (->) b c)  -- ^ The automaton to convert to realtime
-       -> a b [c]
---asyncC th sf = asyncC' th (const . return $ (), return) (first sf)
-asyncC threadHandler sf = initialAIO iod darr where
-  iod = do
-    inp <- newEmptyMVar
-    out <- newIORef empty
-    tid <- forkIO $ worker inp out sf
-    return (tid, inp, out)
-  darr (tid, inp, out) = proc b -> do
-    _ <- threadHandler tid -< ()
-    _ <- liftAIO (\b -> tryTakeMVar inp >> putMVar inp b) -< b -- send the worker the new input
-    c <- liftAIO (\_ -> atomicModifyIORef out (\s -> (empty,s))) -< () --collect ready results
-    returnA -< toList c
-  -- worker processes the inner, "simulated" signal function.
-  worker inp out (Automaton sf) = do
-    b <- readMVar inp     -- get the latest input
-    let (c, sf') = sf b   -- do the calculation
-    deepseq c $ atomicModifyIORef out (\s -> (s |> c, ()))
-    worker inp out sf'
-
-
--- | This is a version of asyncC that does IO actions on either end of 
---   the embedded signal function.
-asyncC' :: (ArrowIO a, ArrowLoop a, ArrowCircuit a, ArrowChoice a, NFData b) => 
-           (ThreadId -> a () ()) -- ^ The thread handler
-        -> (b -> IO d, e -> IO ()) -- ^ Effectful input and output channels for the automaton
-        -> (Automaton (->) (b,d) (c,e))  -- ^ The automaton to convert to asynchronize
-        -> a b [c]
-asyncC' threadHandler (iAction, oAction) sf = initialAIO iod darr where
-  iod = do
-    inp <- newIORef undefined
-    start <- newEmptyMVar
-    out <- newIORef empty
-    tid <- forkIO $ takeMVar start >> worker inp out sf
-    return (tid, inp, out, start)
-  darr (tid, inp, out, start) = proc b -> do
-    _ <- threadHandler tid -< ()
-    _ <- liftAIO $ (\b -> deepseq b $ writeIORef inp b) -< b -- send the worker the new input
-    c <- initialAIO (putMVar start ()) (const $ liftAIO (\_ -> atomicModifyIORef' out (\s -> (empty,s)))) -< () --collect ready results
-    returnA -< toList c
-  -- worker processes the inner, "simulated" signal function.
-  worker inp out (Automaton sf) = do
-    b <- readIORef inp     -- get the latest input
-    d <- iAction b
-    let ((c,e), sf') = sf (b,d)   -- do the calculation
-    oAction e
-    atomicModifyIORef' out (\s -> (s |> c, ()))
-    worker inp out sf'
-
--- | This is a new async function that can perform arbitrary effects.  
---   For that reason, I am labelling it as unsafe
-unsafeAsyncIOOn :: (ArrowIO a, ArrowLoop a, ArrowCircuit a, ArrowChoice a) => Int -> (b,c) ->
-           (ThreadId -> a () ())    -- ^ The thread handler
-        -> (r, (r,b) -> IO (r,c))   -- ^ Effectful function to asynchronize
-        -> a b c
-unsafeAsyncIOOn n = unsafeAsyncIOHelper (forkOn n)
-
-unsafeAsyncIO :: (ArrowIO a, ArrowLoop a, ArrowCircuit a, ArrowChoice a) => (b,c) ->
-           (ThreadId -> a () ())    -- ^ The thread handler
-        -> (r, (r,b) -> IO (r,c))   -- ^ Effectful function to asynchronize
-        -> a b c
-unsafeAsyncIO = unsafeAsyncIOHelper forkIO
-
-
-unsafeAsyncIOHelper frk (b,c) threadHandler (initr, action) = initialAIO iod darr where
-  iod = do
-    inp <- newIORef b
-    out <- newIORef c
-    tid <- frk $ worker inp out initr
-    return (tid, inp, out)
-  darr (tid, inp, out) = proc b -> do
-    _ <- threadHandler tid -< ()
---    _ <- liftAIO (\b -> atomicModifyIORef' inp (\s -> (s |> b, ()))) -< b  -- send the worker the new input
---    c <- liftAIO (\_ -> atomicModifyIORef' out (\s -> (empty,   s))) -< () -- collect ready results
-    _ <- liftAIO (writeIORef inp) -< b  -- send the worker the new input
-    c <- liftAIO (const $ readIORef out) -< () -- collect ready results
-    returnA -< c
-  -- worker processes the inner, "simulated" signal function.
-  worker inp out r = do
---    b <- atomicModifyIORef' inp (\s -> (empty,s))     -- get the latest input
-    b <- readIORef inp
-    (r',c) <- action (r, b)
---    atomicModifyIORef' out (\s -> (s |> c, ()))
-    writeIORef out c
-    worker inp out r'
-
-
 
 

@@ -13,8 +13,7 @@
 
 {-# LANGUAGE Arrows #-}
 module FRP.UISF.Examples.FFT where
-import FRP.UISF hiding (delay)
-import Control.Arrow.Operations
+import FRP.UISF
 import Numeric.FFT (fft)
 import Data.Complex
 import Data.Map (Map)
@@ -116,7 +115,7 @@ fftEx = proc _ -> do
     _ <- leftRight (label "Freq 1: " >>> display) -< f1
     f2 <- hSlider (1, 2000) 440 -< ()
     _ <- leftRight (label "Freq 2: " >>> display) -< f2
-    d <- asyncUISFV sr 0.1 myAutomaton -< (f1, f2)
+    d <- asyncVT sr 0.1 myAutomaton -< (f1, f2)
     let fft = listToMaybe $ catMaybes $ map (snd . fst) d
         s = map (\((s, _), t) -> (s,t)) d
     _ <- histogram (makeLayout (Stretchy 10) (Fixed 150)) -< fft

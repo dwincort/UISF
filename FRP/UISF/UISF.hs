@@ -20,9 +20,6 @@ module FRP.UISF.UISF (
     getDeltaTime, getCTX, withCTX, getEvents, getFocusData, addTerminationProc, getMousePosition, 
     -- * UISF constructors, transformers, and converters
     mkUISF, 
-    -- * UISF Lifting
-    -- $lifting
-    asyncUISFE, asyncUISFEOn, asyncUISFV, --asyncUISFC, 
     -- * Layout Transformers
     -- $lt
     leftRight, rightLeft, topDown, bottomUp, 
@@ -49,9 +46,10 @@ import FRP.UISF.Keys
 import FRP.UISF.Glut
 import FRP.UISF.UITypes
 
-import FRP.UISF.AuxFunctions (Automaton, Time, DeltaT, accumTime, getDeltaT, evMap, 
-                              SEvent, ArrowIO (..),
-                              asyncE, asyncEOn, asyncV)
+import FRP.UISF.AuxFunctions
+    (SEvent, Time, DeltaT, getDeltaT, accumTime, evMap)
+import FRP.UISF.Asynchrony
+    (ArrowIO (..), Automaton, asyncE, asyncEOn, asyncV)
 
 import Control.Monad (when, unless)
 import Data.Foldable (mapM_)
@@ -131,6 +129,7 @@ instance ArrowIO UISF where
       h inp = do
         (_, foc', g, tp, c, uisf) <- f inp
         return (True, foc', g, tp, c, uisf)
+  terminalAIO = addTerminationProc
 
 instance ArrowReader DeltaT UISF where
   readState = getDeltaTime
@@ -220,40 +219,6 @@ getMousePosition = proc _ -> do
 mkUISF :: Layout -> ((CTX, Focus, DeltaT, UIEvent, a) -> (DirtyBit, Focus, Graphic, TerminationProc, b)) -> UISF a b
 mkUISF l f = UISF (const l) fun where
   fun inps = let (db, foc, g, tp, b) = f inps in return (db, foc, g, tp, b, mkUISF l f)
-
-
-------------------------------------------------------------
--- * UISF Lifting
-------------------------------------------------------------
--- $lifting The following two functions are for lifting Automatons to UISFs.  
-
--- | This is the standard one that appropriately keeps track of 
---   simulated time vs real time.  
---
--- The clockrate is the simulated rate of the input signal function.
--- The buffer is the number of time steps the given signal function is allowed 
--- to get ahead of real time.  The real amount of time that it can get ahead is
--- the buffer divided by the clockrate seconds.
--- The output signal function takes and returns values in real time.  The return 
--- values are the list of bs generated in the given time step, each time stamped.
--- 
--- Note that the returned list may be long if the clockrate is much 
--- faster than real time and potentially empty if it's slower.
--- Note also that the caller can check the time stamp on the element 
--- at the end of the list to see if the inner, "simulated" signal 
--- function is performing as fast as it should.
-asyncUISFV :: NFData b => Double -> Double -> Automaton (->) a b -> UISF a [(b, Time)]
-asyncUISFV clockrate buffer sf = proc a -> do
-  t <- accumTime -< ()
-  asyncV clockrate buffer (addTerminationProc . killThread) sf -< (a, t)
-
-
--- | We can also lift a signal function to a UISF asynchronously.
-asyncUISFE :: NFData b => Automaton (->) a b -> UISF (SEvent a) (SEvent b)
-asyncUISFE = asyncE (addTerminationProc . killThread)
-
-asyncUISFEOn :: NFData b => Int -> Automaton (->) a b -> UISF (SEvent a) (SEvent b)
-asyncUISFEOn n = asyncEOn n (addTerminationProc . killThread)
 
 
 ------------------------------------------------------------

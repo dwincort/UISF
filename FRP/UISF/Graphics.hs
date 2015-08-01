@@ -18,7 +18,7 @@ module FRP.UISF.Graphics (
   nullGraphic,
   overGraphic,
   withColor, withColor',
-  text,
+  text, textLines, textWidth, textHeight, chunkText,
   ellipse, shearEllipse, line, polygon, polyline, polybezier, arc,
   circleFilled, circleOutline, rectangleFilled, rectangleOutline,
   translateGraphic, rotateGraphic, scaleGraphic,
@@ -216,9 +216,32 @@ withColor' c g = GColor c g
 -- Text --
 ----------
 
+-- In the future, these text functions should be parameterized by font.
+
 -- | Paint the given text at the given point.
 text :: Point -> String -> Graphic
 text = GText
+
+-- | A convenience function for painting a set of (Point,String) pairs.
+textLines :: [(Point, String)] -> Graphic
+textLines = foldl (\g (p,s) -> overGraphic (text p s) g) nullGraphic
+
+-- | Returns the width of the String in pixels as it will be rendered
+textWidth :: String -> Int
+textWidth s = 9 * length s
+
+-- | Returns the height of the String in pixels as it will be rendered
+textHeight :: String -> Int
+textHeight _ = 16 --It's really 15, but this makes rounding errors better
+
+-- | Takes a String and a number of horizontal pixels and returns the 
+--  string split into lines where each line will render in no more than 
+--  the given number of pixels.  This is like word wrap, but it does 
+--  not take words themselves into account.
+--  Perhaps a future function will implement actual word wrap.
+chunkText :: String -> Int -> [String]
+chunkText [] _ = []
+chunkText s i = let (t,d) = splitAt (i `div` 9) s in t:chunkText d i
 
 
 ------------
@@ -344,12 +367,12 @@ renderGraphicInOpenGL s (GColor (RGB (r,g,b)) graphic) = (GL.color color >> rend
 
 renderGraphicInOpenGL _ (GText (x,y) str) = GL.preservingMatrix $ do
 --  -- These lines are used for Stroke fonts (scale and translate values may need to be adjusted)
---  GL.translate (vector (x, y+16))
---  GL.scale 0.1 (-0.1) (1::GLfloat)
---  GLUT.renderString GLUT.MonoRoman str
+--  GL.translate (vector (x, y+12))
+--  GL.scale 0.12 (-0.12) (1::GLfloat)
+--  GLUT.renderString GLUT.Roman str
   -- These lines are used for Bitmap fonts (raster offset values may need to be adjusted)
   GL.currentRasterPosition $= GLUT.Vertex4 (fromIntegral x) (fromIntegral y + 11) 0 1
-  GLUT.renderString GLUT.Fixed8By13 str
+  GLUT.renderString GLUT.Fixed9By15 str
 
 renderGraphicInOpenGL _ (GPolyLine ps) = 
   GL.renderPrimitive GL.LineStrip (mapM_ vertex ps)

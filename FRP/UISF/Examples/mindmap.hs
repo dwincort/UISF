@@ -2,7 +2,7 @@
 
 import FRP.UISF
 import FRP.UISF.UITypes (Layout)
-import FRP.UISF.Widget (focusable)
+import FRP.UISF.WidgetConstruction (focusable)
 import qualified Data.Map.Strict as Map
 
 {-

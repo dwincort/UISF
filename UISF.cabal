@@ -31,11 +31,13 @@ Library
         FRP.UISF.Examples.Crud,
         FRP.UISF.Examples.Examples,
         FRP.UISF.AuxFunctions,
+        FRP.UISF.Asynchrony,
         FRP.UISF.Glut,
         FRP.UISF.Graphics,
         FRP.UISF.Keys,
         FRP.UISF.UITypes,
         FRP.UISF.UISF,
+        FRP.UISF.WidgetConstruction,
         FRP.UISF.Widget,
         FRP.UISF
   other-modules:

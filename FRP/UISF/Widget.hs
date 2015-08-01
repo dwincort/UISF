@@ -7,19 +7,14 @@
 -- Maintainer  :  dwc@cs.yale.edu
 -- Stability   :  experimental
 --
--- A simple Graphical User Interface based on FRP. It uses the SOE
--- graphics library, and draws custom widgets on the screen.
--- 
--- SOE graphics uses OpenGL as the primitive drawing routine, and
--- GLFW library to provide window and input support.
--- 
--- The monadic UI concept is borrowed from Phooey by Conal Elliott.
+-- These are the default, built-in widgets for UISF.
 
 {-# LANGUAGE RecursiveDo, Arrows, TupleSections #-}
 {-# OPTIONS_HADDOCK prune #-}
 
 module FRP.UISF.Widget where
 
+import FRP.UISF.WidgetConstruction
 import FRP.UISF.Graphics
 import FRP.UISF.Keys
 import FRP.UISF.UITypes
@@ -27,34 +22,6 @@ import FRP.UISF.UISF
 import FRP.UISF.AuxFunctions (SEvent, Time, DeltaT, accumTime, timer, edge, delay, constA, concatA)
 
 import Control.Arrow
-import Data.Maybe (fromMaybe)
-
-------------------------------------------------------------
--- Shorthand and Helper Functions
-------------------------------------------------------------
-
--- | Default padding between border and content.
-padding :: Int
-padding = 3 
-
--- | The default assumed background color of the GUI window.
-bg :: Color
-bg = LightBeige
-
--- | An infix shorthand for overGraphic.
-(//) :: Graphic -> Graphic -> Graphic
-(//) = overGraphic
-
--- | A nice way to make a graphic under only certain conditions.
-whenG :: Bool -> Graphic -> Graphic
-whenG True  g = g
-whenG False _ = nullGraphic
-
--- | Tests whether a Point is within the bounds of a rectangle.
-inside :: Point -> Rect -> Bool
-inside (u, v) ((x, y), (w, h)) = u >= x && v >= y && u < x + w && v < y + h
-
-
 
 ------------------------------------------------------------
 -- * Widgets
@@ -67,25 +34,47 @@ inside (u, v) ((x, y), (w, h)) = u >= x && v >= y && u < x + w && v < y + h
 label :: String -> UISF a a
 label s = mkBasicWidget layout draw
   where
-    (minw, minh) = (length s * 8 + padding * 2, 16 + padding * 2)
+    (minw, minh) = (textWidth s + padding * 2, textHeight s + padding * 2)
     layout = makeLayout (Fixed minw) (Fixed minh)
     draw ((x, y), (w, h)) = withColor Black $ text (x + padding, y + (h `div` 2) - 8) s
 
 -----------------
 -- Display Box --
 -----------------
+-- | DisplayField is an output widget showing the instantaneous value of
+--  a signal of Strings.  It will show the String over how ever much 
+--  space it has available to it.  The static argument will decide what 
+--  to cut off in the case where it does not have space to show the 
+--  entire String: if given True, it will prefer the older characters 
+--  (cutting off later text), and if given False, it will prefer the 
+--  newer characters (cutting off older ones.
+displayField :: Bool -> UISF String ()
+displayField preferOld = mkWidget "" layout (\v v' _ _ -> ((), v, v /= v')) draw 
+  where
+    minh = textHeight "" + padding * 2
+    layout = makeLayout (Stretchy $ padding * 2) (Stretchy minh)
+    draw b@((x,y), (w, h)) _ s = 
+      let th = textHeight s
+          w' = w - padding * 2
+          numLines = (h - padding * 2) `div` th
+          -- For some reason, it's important that s never be fully evaluated.
+          -- This means don't check the length of chunkText s w' either
+          texts = case preferOld of
+            True  -> chunkText s w'
+            False -> reverse $ map reverse $ take numLines $ chunkText (reverse s) w'
+          pts = zip (replicate numLines $ x+padding) [y+padding, y+padding+th..]
+      in withColor Black (textLines $ zip pts texts)
+         // shadowBox pushed b 
+         // withColor White (rectangleFilled b)
+
+
 -- | DisplayStr is an output widget showing the instantaneous value of
 --   a signal of strings.
 displayStr :: UISF String ()
-displayStr = mkWidget "" d (\v v' _ _ -> ((), v, v /= v')) draw 
-  where
-    minh = 16 + padding * 2
-    d = makeLayout (Stretchy 8) (Fixed minh)
-    draw b@((x,y), (w, _h)) _ s = 
-      let n = (w - padding * 2) `div` 8
-      in withColor Black (text (x + padding, y + padding) (take n s)) 
-         // shadowBox pushed b 
-         // withColor White (rectangleFilled b)
+displayStr = setLayout layout $ displayField True
+  where layout = makeLayout (Stretchy $ padding * 2) (Fixed $ textHeight "" + padding * 2)
+
+
 
 -- | display is a widget that takes any show-able value and displays it.
 display :: Show a => UISF a ()
@@ -133,36 +122,38 @@ textbox' = focusable $
     k <- getEvents -< ()
     rec let (s', i) = if inFocus then update s iPrev ctx k else (s, iPrev)
         iPrev <- delay 0 -< i
-    displayStr -< seq i s'
+    displayStr -< seq iPrev s'
     inf <- delay False -< inFocus
     b <- if inf then timer -< 0.5 else returnA -< Nothing
     b' <- edge -< not inFocus --For use in drawing the cursor
     rec willDraw <- delay True -< willDraw'
         let willDraw' = maybe willDraw (const $ not willDraw) b --if isJust b then not willDraw else willDraw
     canvas' displayLayout drawCursor -< case (inFocus, b, b', i == iPrev) of
-              (True,  Just _, _, _) -> Just (willDraw, i)
-              (True,  _, _, False)  -> Just (willDraw, i)
-              (False, _, Just _, _) -> Just (False, i)
+              (True,  Just _, _, _) -> Just (willDraw, i, s')
+              (True,  _, _, False)  -> Just (willDraw, i, s')
+              (False, _, Just _, _) -> Just (False, i, s')
               _ -> Nothing
     returnA -< s'
   where
-    minh = 16 + padding * 2
-    displayLayout = makeLayout (Stretchy 8) (Fixed minh)
-    update s  i _ (Key c _ True)          = (take i s ++ [c] ++ drop i s, i+1)
-    update s  i _ (SKey KeyBackspace _ True) = (take (i-1) s ++ drop i s, max (i-1) 0)
-    update s  i _ (SKey KeyDelete    _ True) = (take i s ++ drop (i+1) s, i)
+    minh = textHeight "" + padding * 2
+    displayLayout = makeLayout (Stretchy $ padding * 2) (Fixed minh)
+    update s  i _ (Key c _ True)             = let (t,d) = splitAt i s in (t ++ c:d, i+1)
+    update s  i _ (SKey KeyBackspace _ True) = let (t,d) = splitAt (i-1) s in (t ++ drop 1 d, max (i-1) 0)
+    update s  i _ (SKey KeyDelete    _ True) = let (t,d) = splitAt i s in (t ++ drop 1 d, i)
     update s  i _ (SKey KeyLeft      _ True) = (s, max (i-1) 0)
     update s  i _ (SKey KeyRight     _ True) = (s, min (i+1) (length s))
     update s _i _ (SKey KeyEnd       _ True) = (s, length s)
     update s _i _ (SKey KeyHome      _ True) = (s, 0)
-    update s _i c (Button (x,_) LeftButton True) = (s, min (length s) $ (x - xoffset c) `div` 8)
+    update s _i c (Button (x,_) LeftButton True) = (s, min (length s) (length $ safehead $ chunkText s (x - xoffset c)))
     update s  i _ _                        = (s, max 0 $ min i $ length s)
-    drawCursor (False, _) _ = nullGraphic
-    drawCursor (True, i) (w,_h) = 
-        let linew = padding + i*8
+    drawCursor (False, _, _) _ = nullGraphic
+    drawCursor (True, i, s) (w,_h) = 
+        let linew = 1+padding + textWidth (take i s)
         in if linew > w then nullGraphic else withColor Black $
-            line (linew, padding) (linew, 16+padding)
+            line (linew, padding) (linew, minh-padding)
     xoffset = fst . fst . bounds
+    safehead [] = ""
+    safehead (x:_) = x
 
 -----------
 -- Title --
@@ -170,14 +161,14 @@ textbox' = focusable $
 -- | Title frames a UI by borders, and displays a static title text.
 title :: String -> UISF a b -> UISF a b
 title str (UISF fl f) = UISF layout h where
-  (tw, th) = (length str * 8, 16)
+  (tw, th) = (textWidth str, textHeight str)
   drawit ((x, y), (w, h)) = 
     withColor Black (text (x + 10, y) str) 
     // withColor bg (rectangleFilled ((x + 8, y), (tw + 4, th))) 
     // shadowBox marked ((x, y + 8), (w, h - 8))
-  layout ctx = let l = fl ctx in l { wMin = max (wMin l) tw, hFixed = hFixed l + 24 }
+  layout ctx = let l = fl ctx in l { wMin = max (wMin l) tw, hFixed = hFixed l + th + 10 }
   h (CTX flow bbx@((x,y), (w,h)) cj,foc,t,inp, a) = 
-    let ctx' = CTX flow ((x + 6, y + 18), (w - 12, h - 26)) cj
+    let ctx' = CTX flow ((x + 6, y + th+2), (w - 12, h - th - 10)) cj
     in do (db, foc', g, cd, b, uisf) <- f (ctx', foc, t, inp, a)
           return (db, foc', drawit bbx // g, cd, b, title str uisf)
 
@@ -204,7 +195,7 @@ button :: String -> UISF () Bool
 button l = focusable $ 
   mkWidget False d process draw
   where
-    (tw, th) = (8 * length l, 16) 
+    (tw, th) = (textWidth l, textHeight l)
     (minw, minh) = (tw + padding * 2, th + padding * 2)
     d = makeLayout (Stretchy minw) (Fixed minh)
     draw b@((x,y), (w,h)) inFocus down = 
@@ -235,7 +226,7 @@ stickyButton l = constA Nothing >>> stickyButtonS l
 -- | This variant of stickyButton is settable by its input stream.
 stickyButtonS :: String -> UISF (SEvent Bool) Bool
 stickyButtonS l = arr (fmap $ \b -> if b then 1 else 0) >>> cycleboxS d lst 0 where
-  (tw, th) = (8 * length l, 16) 
+  (tw, th) = (textWidth l, textHeight l)
   (minw, minh) = (tw + padding * 2, th + padding * 2)
   d = makeLayout (Stretchy minw) (Fixed minh)
   draw down b@((x,y), (w,h)) inFocus = 
@@ -263,7 +254,7 @@ checkboxS l state = proc eb -> do
       let s' = maybe (maybe s (const $ not s) e) id eb
   returnA -< s'
   where
-    (tw, th) = (8 * length l, 16) 
+    (tw, th) = (textWidth l, textHeight l)
     (minw, minh) = (tw + padding * 2, th + padding * 2)
     d = makeLayout (Stretchy minw) (Fixed minh)
     draw ((x,y), (_w,h)) inFocus down = 
@@ -325,7 +316,7 @@ radioS labels i = proc ei -> do
       v <- aux (j + 1) ls -< n
       returnA -< maybe v (const $ Just j) u
       where
-        (tw, th) = (8 * length l, 16) 
+        (tw, th) = (textWidth l, textHeight l)
         (minw, minh) = (tw + padding * 2, th + padding * 2)
         d = makeLayout (Stretchy minw) (Fixed minh)
         draw ((x,y), (_w,h)) inFocus down = 
@@ -342,30 +333,51 @@ radioS labels i = proc ei -> do
 --------------
 -- List Box --
 --------------
+
+
 -- | The listbox widget creates a box with selectable entries.
--- The input stream is the list of entries as well as which entry is 
--- currently selected, and the output stream is the index of the newly 
--- selected entry.  Note that the index can be greater than the length 
--- of the list (simply indicating no choice selected).
-listbox :: (Eq a, Show a) => UISF ([a], Int) Int
-listbox = focusable $ mkWidget ([], -1) layout process draw >>> delay (-1)
+--  It takes two static values indicating the initial list 
+--  of data to display and the initial index selected (use -1 for no 
+--  selection).  It takes two event streams that can be used to 
+--  independently set the list and index.  The output stream is the 
+--  currently selected index.
+--
+--  Note that the index can be greater than the length 
+--  of the list (simply indicating no choice selected).
+listbox :: (Eq a, Show a) => [a] -> Int -> UISF (SEvent [a], SEvent Int) Int
+listbox sDB sI = proc (eDB, eI) -> do
+  rec let db' = maybe db id eDB
+      db <- delay sDB -< db'
+      i' <- delay sI  -< i
+      i  <- listbox'  -< (db', maybe i' id eI)
+  returnA -< i
+
+-- | This variant of listbox does not keep its list or index stored 
+--  internally and thus accepts a stream of those values.  As such, 
+--  it requires no static initializing parameters.  This can be useful 
+--  when the list or index are being updated frequently.
+listbox' :: (Eq a, Show a) => UISF ([a], Int) Int
+listbox' = focusable $ mkWidget ([], -1) layout process draw
   where
-    layout = makeLayout (Stretchy 80) (Stretchy 16)
+    layout = makeLayout (Stretchy 80) (Stretchy lineheight)
     -- takes the rectangle to draw in and a tuple of the list of choices and the index selected
-    lineheight = 16
+    lineheight = textHeight ""
     --draw :: Show a => Rect -> ([a], Int) -> Graphic
-    draw rect@(_,(w,_h)) _ (lst, i) = 
-        genTextGraphic rect i lst  
+    draw rect@((x,y'),(w,_h)) _ (lst, i) = 
+        genTextGraphic (y'+2) i lst --shadowbox is 2 pixels wide, so we add 2 to y
         // shadowBox pushed rect 
         // withColor White (rectangleFilled rect)
         where
-          n = (w - padding * 2) `div` 8
+          trimText v = case chunkText (show v) (w - padding * 2) of
+            [] -> ""
+            (s:_) -> s
           genTextGraphic _ _ [] = nullGraphic
-          genTextGraphic ((x,y),(w,h)) i (v:vs) = (if i == 0
-                then withColor White (text (x + padding, y + padding) (take n (show v)))
-                     // withColor Blue (rectangleFilled ((x,y),(w,lineheight)))
-                else withColor Black (text (x + padding, y + padding) (take n (show v)))) 
-                     // genTextGraphic ((x,y+lineheight),(w,h-lineheight)) (i - 1) vs
+          genTextGraphic y i (v:vs) = (if i == 0
+                then withColor White (text (x + padding, y + padding) (trimText v))
+                     // withColor Blue (rectangleFilled ((x+2,y),(w-4,lineheight)))
+                      --shadowbox is 2 pixels wide, so we add 2 to x and subtract 4 from w
+                else withColor Black (text (x + padding, y + padding) (trimText v))) 
+                // genTextGraphic (y+lineheight) (i - 1) vs
     process :: Eq a => ([a], Int) -> ([a], Int) -> Rect -> UIEvent -> (Int, ([a], Int), Bool)
     process (lst,i) olds bbx e = (i', (lst, i'), olds /= (lst, i'))
         where
@@ -564,147 +576,8 @@ scrollable layout (w,h) sf = withCTX $ proc ((CTX flow (asdf, (w',h')) _),a) -> 
 
 
 ------------------------------------------------------------
--- * Widget Builders
+-- *** Custom Graphics
 ------------------------------------------------------------
-
--- | mkWidget is a helper function to make stateful widgets easier to write.  
--- In essence, it breaks down the idea of a widget into 4 constituent 
--- components: state, layout, computation, and drawing.
--- 
--- As 'mkWidget' allows for making stateful widgets, the first parameter is 
--- simply the initial state.
--- 
--- The layout is the static layout that this widget will use.  It 
--- cannot be dependent on any streaming arguments, but a layout can have 
--- \"stretchy\" sides so that it can expand/shrink to fit an area.  Learn 
--- more about making layouts in 'UIType's UI Layout section -- specifically, 
--- check out the 'makeLayout' function and the 'LayoutType' data type.
--- 
--- The computation is where the logic of the widget is held.  This 
--- function takes as input the streaming argument a, the widget's state, 
--- a Rect of coordinates indicating the area that has been allotted for 
--- this widget, and the 'UIEvent' that is triggering this widget's activation 
--- (see the definition of 'UIEvent' in SOE).  The output consists of the 
--- streaming output, the new state, and the dirty bit, which represents 
--- whether the widget needs to be redrawn.
--- 
--- Lastly, the drawing routine takes the same Rect as the computation, a 
--- Bool that is true when this widget is in focus and false otherwise, 
--- and the current state of the widget (technically, this state is the 
--- one freshly returned from the computation).  Its output is the Graphic 
--- that this widget should display.
-
-mkWidget :: s                                 -- ^ initial state
-         -> Layout                            -- ^ layout
-         -> (a -> s -> Rect -> UIEvent ->
-             (b, s, DirtyBit))                -- ^ computation
-         -> (Rect -> Bool -> s -> Graphic)    -- ^ drawing routine
-         -> UISF a b
-mkWidget i layout comp draw = proc a -> do
-  rec s  <- delay i -< s'
-      (b, s') <- mkUISF layout aux -< (a, s)
-  returnA -< b
-    where
-      aux (ctx,f,t,e,(a,s)) = (db, f, g, nullTP, (b, s'))
-        where
-          rect = bounds ctx
-          (b, s', db) = comp a s rect e
-          g = {-scissorGraphic rect $ -} draw rect (snd f == HasFocus) s'
-
--- | Occasionally, one may want to display a non-interactive graphic in 
--- the UI.  'mkBasicWidget' facilitates this.  It takes a layout and a 
--- simple drawing routine and produces a non-interacting widget.
-mkBasicWidget :: Layout               -- ^ layout
-              -> (Rect -> Graphic)    -- ^ drawing routine
-              -> UISF a a
-mkBasicWidget layout draw = mkUISF layout $ \(ctx, f, _, _, a) ->
-  (False, f, draw $ bounds ctx, nullTP, a)
-
-
--- | The toggle is useful in the creation of both 'checkbox'es and 'radio' 
--- buttons.  It displays on/off according to its input, and when the mouse 
--- is clicked on it, it will output True (otherwise it outputs False).
--- 
--- The UISF returned from a call to toggle accepts the state stream and 
--- returns whether the toggle is being clicked.
-
-toggle :: (Eq s) => s                     -- ^ Initial state value
-       -> Layout                          -- ^ The layout for the toggle
-       -> (Rect -> Bool -> s -> Graphic)  -- ^ The drawing routine
-       -> UISF s Bool
-toggle iState layout draw = focusable $ 
-  mkWidget iState layout process draw
-  where
-    process s s' _ e = (on, s, s /= s')
-      where 
-        on = case e of
-          Button _ LeftButton True -> True
-          SKey KeyEnter _     True -> True
-          Key  ' '      _     True -> True
-          _ -> False 
-
--- | The mkSlider widget builder is useful in the creation of all sliders.
-
-mkSlider :: Eq a => Bool              -- ^ True for horizontal, False for vertical
-         -> (a -> Int -> Int)         -- ^ A function for converting a value to a position
-         -> (Int -> Int -> a)         -- ^ A function for converting a position to a value
-         -> (Int -> Int -> a -> a)    -- ^ A function for determining how much to jump when 
-                                      -- a click is on the slider but not the target
-         -> a                         -- ^ The initial value for the slider
-         -> UISF (SEvent a) a
-mkSlider hori val2pos pos2val jump val0 = focusable $ 
-  mkWidget (val0, Nothing) d process draw 
-  where
-    rotP p@(x,y) ((bx,by),_) = if hori then p else (bx + y - by, by + x - bx)
-    rotR r@(p,(w,h)) bbx = if hori then r else (rotP p bbx, (h,w))
-    (minw, minh) = (16 + padding * 2, 16 + padding * 2)
-    (tw, th) = (16, 8)
-    d = if hori then makeLayout (Stretchy minw) (Fixed minh)
-                else makeLayout (Fixed minh) (Stretchy minw)
-    val2pt val ((bx,by), (bw,_bh)) = 
-      let p = val2pos val (bw - padding * 2 - tw)
-      in (bx + p + padding, by + 8 - th `div` 2 + padding) 
-    bar ((x,y),(w,_h)) = ((x + padding + tw `div` 2, y + 6 + padding), 
-                         (w - tw - padding * 2, 4))
-    draw b inFocus (val, _) = 
-      let p@(mx,my) = val2pt val (rotR b b)
-      in  shadowBox popped (rotR (p, (tw, th)) b) 
-          // whenG inFocus (shadowBox marked $ rotR (p, (tw-2, th-2)) b) 
-          // withColor bg (rectangleFilled $ rotR ((mx + 2, my + 2), (tw - 4, th - 4)) b) 
-          // shadowBox pushed (rotR (bar (rotR b b)) b)
-    process ea (val, s) b evt = (val', (val', s'), val /= val') 
-      where
-        (val', s') = case ea of
-          Just a -> (a, s)
-          Nothing -> case evt of
-            Button pt' LeftButton down -> let pt = rotP pt' bbx in
-              case (pt `inside` target, down) of
-                (True, True) -> (val, Just (ptDiff pt val))
-                (_, False)   -> (val, Nothing)
-                (False, True) | pt `inside` bar' -> (clickonbar pt, s)
-                _ -> (val, s)
-            MouseMove pt' -> let pt = rotP pt' bbx in
-              case s of
-                Just pd -> (pt2val pd pt, Just pd)
-                Nothing -> (val, s)
-            SKey KeyLeft  _ True -> if hori then (jump (-1) bw val, s) else (val, s)
-            SKey KeyRight _ True -> if hori then (jump 1    bw val, s) else (val, s)
-            SKey KeyUp    _ True -> if hori then (val, s) else (jump (-1) bw val, s)
-            SKey KeyDown  _ True -> if hori then (val, s) else (jump 1    bw val, s)
-            SKey KeyHome  _ True -> (pos2val 0  (bw - 2 * padding - tw), s)
-            SKey KeyEnd   _ True -> (pos2val bw (bw - 2 * padding - tw), s)
-            _ -> (val, s)
-        bbx@((bx,_by),(bw,_bh)) = rotR b b
-        bar' = let ((x,y),(w,h)) = bar bbx in ((x,y-4),(w,h+8))
-        target = (val2pt val bbx, (tw, th)) 
-        ptDiff (x,_) val = 
-          let (x', y') = val2pt val bbx
-          in (x' + tw `div` 2 - x, y' + th `div` 2 - x)
-        pt2val (dx, _dy) (x,_y) = pos2val (x + dx - bx - tw `div` 2) (bw - 2 * padding - tw)
-        clickonbar (x',_y') = 
-          let (x,_y) = val2pt val bbx
-          in jump (if x' < x then -1 else 1) bw val
-
 
 -- | Canvas displays any graphics. The input is a signal of graphics
 -- events because we only want to redraw the screen when the input
@@ -726,109 +599,4 @@ canvas' layout draw = mkWidget Nothing layout process drawit
     process (Just a) _ _ _ = ((), Just a, True)
     process Nothing  a _ _ = ((), a, False)
 
-
----------------
--- Cycle Box --
----------------
--- | cyclebox is a clickable widget that cycles through a predefined set 
---   set of appearances/output values.
-cyclebox :: Layout -> [(Rect -> Bool -> Graphic, b)] -> Int -> UISF () b
-cyclebox d lst start = constA Nothing >>> cycleboxS d lst start
-
--- | cycleboxS is a cyclebox that additionally accepts input events that 
---   can set it to a particular appearance/output.
-cycleboxS :: Layout -> [(Rect -> Bool -> Graphic, b)] -> Int -> UISF (SEvent Int) b
-cycleboxS d lst start = focusable $ 
-  mkWidget start d process draw
-  where
-    len = length lst
-    incr i = (i+1) `mod` len
-    draw b inFocus i = (fst (lst!!i)) b inFocus
-    process ei i b evt = (snd (lst!!i'), i', i /= i')
-      where 
-        j = fromMaybe i ei
-        i' = case evt of
-          Button _ LeftButton True -> incr j
-          SKey KeyEnter _     True -> incr j
-          Key ' ' _           True -> incr j
-          _ -> j
-
-
-------------------------------------------------------------
--- * Focus
-------------------------------------------------------------
-
--- $ Any widget that wants to accept mouse button clicks or keystrokes 
--- must be focusable.  The focusable function below achieves this.
-
--- | Making a widget focusable makes it accessible to tabbing and allows 
--- it to see any mouse button clicks and keystrokes when it is actually 
--- in focus.
-focusable :: UISF a b -> UISF a b
-focusable (UISF layout f) = proc x -> do
-  rec hasFocus <- delay False -< hasFocus'
-      (y, hasFocus') <- UISF layout (h f) -< (x, hasFocus)
-  returnA -< y
- where
-  h fun (ctx, (myid,focus),t, inp, (a, hasFocus)) = do
-    let (f, hasFocus') = case (focus, hasFocus, inp) of
-          (HasFocus, _, _) -> (HasFocus, True)
-          (SetFocusTo n, _, _) | n == myid -> (NoFocus, True)
-          (DenyFocus, _, _) -> (DenyFocus, False)
-          (_, _,    Button pt _ True) -> (NoFocus, pt `inside` bounds ctx)
-          (_, True, SKey KeyTab ms True) -> if hasShiftModifier ms 
-                                            then (SetFocusTo (myid-1), False) 
-                                            else (SetFocusTo (myid+1), False)
-          (_, _, _) -> (focus, hasFocus)
-        focus' = if hasFocus' then HasFocus else DenyFocus
-        inp' = if hasFocus' then (case inp of 
-              SKey KeyTab _ _ -> NoUIEvent
-              _ -> inp)
-               else (case inp of 
-              Button _ _ True -> NoUIEvent -- TODO: why "True" and not "_"?
-              Key  _ _ _      -> NoUIEvent
-              SKey _ _ _      -> NoUIEvent
-              _ -> inp)
-        redraw = hasFocus /= hasFocus'
-    (db, _, g, cd, b, UISF newLayout fun') <- fun (ctx, (myid,focus'), t, inp', a)
-    return (db || redraw, (myid+1,f), g, cd, (b, hasFocus'), UISF newLayout (h fun'))
-
--- | Although mouse button clicks and keystrokes will be available once a 
--- widget marks itself as focusable, the widget may also simply want to 
--- know whether it is currently in focus to change its appearance.  This 
--- can be achieved with the following signal function.
-isInFocus :: UISF () Bool
-isInFocus = getFocusData >>> arr ((== HasFocus) . snd)
-
-
-------------------------------------------------------------
--- * Supplemental Drawing Function
-------------------------------------------------------------
-
--- | A convenience function for making a box that appears to have a 
---  shadow.  This is accomplished by using four colors representing:
---
---  (Top outside, Top inside, Bottom inside, Bottom Outside).
---
---  This is designed to be used with the below values 'pushed', 
---  'popped', and 'marked'.
-shadowBox :: (Color,Color,Color,Color) -> Rect -> Graphic
-shadowBox (to,ti,bi,bo) ((x, y), (w, h)) = 
-     withColor to (line (x, y) (x, y + h - 1) 
-                // line (x, y) (x + w - 2, y)) 
-  // withColor bo (line (x + 1, y + h - 1) (x + w - 1, y + h - 1) 
-                // line (x + w - 1, y) (x + w - 1, y + h - 1))
-  // withColor ti (line (x + 1, y + 1) (x + 1, y + h - 2) 
-                // line (x + 1, y + 1) (x + w - 3, y + 1)) 
-  // withColor bi (line (x + 2, y + h - 2) (x + w - 2, y + h - 2) 
-                // line (x + w - 2, y + 1) (x + w - 2, y + h - 2))
-
-pushed, popped, marked :: (Color,Color,Color,Color)
--- | A 'pushed' 'shadowBox' appears as if it is pushed inward.
-pushed = (MediumBeige, DarkBeige, VLightBeige, White)
--- | A 'popped' 'shadowBox' appears as if it pops outward.
-popped = (VLightBeige, White, MediumBeige, DarkBeige)
--- | A 'marked' 'shadowBox' appears somewhat between popped and pushed 
---  and is designed to indicate that the box is at the ready.
-marked = (MediumBeige, White, MediumBeige, White)
 

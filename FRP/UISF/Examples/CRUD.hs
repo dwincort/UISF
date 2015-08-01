@@ -31,6 +31,20 @@ instance Show NameEntry where
 instance Eq NameEntry where
     (NameEntry f1 l1) == (NameEntry f2 l2) = f1 == f2 && l1 == l2
 
+deleteFromDB :: (a -> Bool) -> Int -> Database a -> Database a
+deleteFromDB _ _ [] = []
+deleteFromDB f i (x:xs) = case (f x, i == 0) of
+    (True, True)    -> xs
+    (True, False)   -> x:deleteFromDB f (i-1) xs
+    (False, _)      -> x:deleteFromDB f i xs
+
+updateDB :: (a -> Bool) -> Int -> a -> Database a -> Database a
+updateDB _ _ _ [] = []
+updateDB f i a (x:xs) = case (f x, i == 0) of
+    (True, True)    -> a:xs
+    (True, False)   -> x:updateDB f (i-1) a xs
+    (False, _)      -> x:updateDB f i a xs
+
 
 -- defaultnames is a default database for our example
 defaultnames :: Database NameEntry
@@ -41,7 +55,7 @@ defaultnames = [
 
 
 -- | This function will run the crud GUI with the default names.
-crud = runUI (defaultUIParams {uiSize=(350, 400), uiTitle="CRUD"}) (crudUISF defaultnames)
+crud = runUI (defaultUIParams {uiSize=(450, 400), uiTitle="CRUD"}) (crudUISF defaultnames)
 -- | main = crud
 main = crud
 
@@ -52,34 +66,28 @@ crudUISF :: Database NameEntry -> UISF () ()
 crudUISF initnamesDB = proc _ -> do
   rec
     fStr <- leftRight $ label "Filter text: " >>> textbox "" -< Nothing
-    (i, db, fdb, nameStr, surnStr) <- (| leftRight (do
-        (i, db, fdb) <- (| topDown (do
-            rec i <- listbox -< (fdb, i')
-                db <- delay initnamesDB -< db'
-                let fdb = filter (filterFun fStr) db
-            returnA -< (i, db, fdb)) |)
-        (nameStr, surnStr) <- (| topDown (do
+    let fdb = filter (filterFun fStr) db
+    (i, nameData) <- (| leftRight (do
+        i <- listbox' -< (fdb, i')
+        nameData <- (| topDown (do
             rec nameStr <- leftRight $ label "Name:    " >>> textbox "" -< nameStr'
                 surnStr <- leftRight $ label "Surname: " >>> textbox "" -< surnStr'
-                let nameStr' = if previ == i then Nothing else Just $ firstName ((filter (filterFun fStr) db') `at` i')
-                    surnStr' = if previ == i then Nothing else Just $ lastName  ((filter (filterFun fStr) db') `at` i')
-            returnA -< (nameStr, surnStr)) |)
-        returnA -< (i, db, fdb, nameStr, surnStr)) |)
+                iUpdate <- unique -< i
+                let nameStr' = fmap (const $ firstName (fdb `at` i)) iUpdate
+                    surnStr' = fmap (const $ lastName  (fdb `at` i)) iUpdate
+            returnA -< NameEntry nameStr surnStr) |)
+        returnA -< (i, nameData)) |)
     buttons <- leftRight $ (edge <<< button "Create") &&& 
+                           (edge <<< button "Update") &&& 
                            (edge <<< button "Delete") -< ()
-    previ <- delay 0 -< i
-    let (db', i') = case buttons of
-            (Just _, Nothing) -> (db ++ [NameEntry nameStr surnStr], length fdb)
-            (Nothing, Just _) -> (deleteElem (filterFun fStr) i db,
-                              if i == length fdb - 1 then length fdb - 2 else i)
+    (db,i') <- delay (initnamesDB, -1) -< case buttons of
+            (Just _, (_, _))             -> (db ++ [nameData], length fdb)
+            (Nothing, (Just _, _))       -> (updateDB (filterFun fStr) i nameData db, i)
+            (Nothing, (Nothing, Just _)) -> (deleteFromDB (filterFun fStr) i db,
+                                             if i == length fdb - 1 then i - 1 else i)
             _ -> (db, i)
   returnA -< ()
   where
-    deleteElem _ _ [] = []
-    deleteElem f i (x:xs) = case (f x, i == 0) of
-        (True, True)    -> xs
-        (True, False)   -> x:deleteElem f (i-1) xs
-        (False, _)      -> x:deleteElem f i xs
     filterFun str name = and (map (\s -> isInfixOf s (map toLower $ show name)) (words (map toLower str)))
     lst `at` index = if index >= length lst || index < 0 then NameEntry "" "" else lst!!index
 
@@ -87,27 +95,28 @@ crudUISF initnamesDB = proc _ -> do
 -- If we don't care about formatting, this code simplifies a huge amount to:
 -- crudUISF initnamesDB = proc _ -> do
 --   rec
---     (fStr,fi) <- leftRight $ label "Filter text: " >>> cursoredTextbox False ("",0) -< (fStr,fi)
---     i <- listbox -< (fdb, i')
---     db <- delay initnamesDB -< db'
+--     fStr <- leftRight $ label "Filter text: " >>> textbox "" -< Nothing
 --     let fdb = filter (filterFun fStr) db
---     (nameStr, ni) <- leftRight $ label "Name:    " >>> cursoredTextbox False "" -< (nameStr', ni)
---     (surnStr, si) <- leftRight $ label "Surname: " >>> cursoredTextbox False "" -< (surnStr', si)
---     let nameStr' = if previ == i' then nameStr else firstName ((filter (filterFun fStr) db') `at` i')
---         surnStr' = if previ == i' then surnStr else lastName ((filter (filterFun fStr) db') `at` i')
+--     i <- listbox -< (fdb, i')
+--     nameStr <- leftRight $ label "Name:    " >>> textbox "" -< nameStr'
+--     surnStr <- leftRight $ label "Surname: " >>> textbox "" -< surnStr'
+--     iUpdate <- unique -< i
+--     let nameStr' = fmap (const $ firstName (fdb `at` i)) iUpdate
+--         surnStr' = fmap (const $ lastName  (fdb `at` i)) iUpdate
+--         nameData = NameEntry nameStr surnStr
 --     buttons <- leftRight $ (edge <<< button "Create") &&& 
 --                            (edge <<< button "Delete") -< ()
---     previ <- delay 0 -< i
---     let (db', i') = case buttons of
---             (True, False) -> (db ++ [NameEntry nameStr surnStr], length fdb)
---             (False, True) -> (deleteElem (filterFun fStr) i db,
---                               if i == length fdb - 1 then length fdb - 2 else i)
+--     (db,i') <- delay (initnamesDB, -1) <- case buttons of
+--            (Just _, (_, _))             -> (db ++ [nameData], length fdb)
+--            (Nothing, (Just _, _))       -> (updateDB (filterFun fStr) i nameData db, i)
+--            (Nothing, (Nothing, Just _)) -> (deleteFromDB (filterFun fStr) i db,
+--                                             if i == length fdb - 1 then length fdb - 2 else i)
 --             _ -> (db, i)
 --   returnA -< ()
 --   where
 --     ...
 -- 
--- Clearly, this is much easier to read and clearer as to what is going on. 
+-- Clearly, this is easier to read and clearer as to what is going on. 
 -- However, to keep the style entirely arrow-based, we are forced to inject 
 -- arrow transformers (here leftRight and topDown) to modify chunks of the 
 -- code.  The banana brackets (| |) allow us to refrain from retyping the 

@@ -24,7 +24,7 @@ import FRP.UISF hiding (accum)
 
 -- We make our own special type of button for inputting hand information, 
 -- so we import a few things directly from Widget and SOE.
-import FRP.UISF.Widget (cycleboxS, padding, (//), whenG, box, marked, pushed, popped)
+import FRP.UISF.WidgetConstruction (cycleboxS, padding, (//), whenG, shadowBox, marked, pushed, popped)
 import FRP.UISF.Graphics (text, withColor)
 
 import Data.List (delete, foldl', group)
@@ -119,7 +119,7 @@ pinochleSF = proc _ -> do
             _ -> Nothing
     restr <- checkbox "Restrict trump suit?" False -< ()
     b <- edge <<< button "Calculate meld from kitty" -< ()
-    kre <- (asyncUISFE $ arr kittyResult) -< 
+    kre <- (asyncE $ arr kittyResult) -< 
             fmap (const (hand, kittenSizeStr, if restr then Just trump else Nothing)) b
     let (k,d) = case (clearEv, kre, b) of
             (Just _, _, _) -> (Just [], Just [])
@@ -251,8 +251,8 @@ cardSelector str = arr (fmap (const 0)) >>> cycleboxS d lst 0 where
       let x' = x + (w - tw) `div` 2 + if i>0 then 0 else -1
           y' = y + (h - th) `div` 2 + if i>0 then 0 else -1
       in withColor Black (text (x', y') s) 
-         // whenG inFocus (box marked b)
-         // box (if i>0 then pushed else popped) b
+         // whenG inFocus (shadowBox marked b)
+         // shadowBox (if i>0 then pushed else popped) b
     lst = zip (map draw [(0,"0 "++str++"s"), (1, "1 "++str), (2, "2 "++str++"s")]) [0,1,2]
 
 

@@ -11,6 +11,7 @@ module FRP.UISF
   , displayStr          -- :: UISF String ()
   , display             -- :: Show a => UISF a ()
   , withDisplay         -- :: Show b => UISF a b -> UISF a b
+  , displayField        -- :: Bool -> UISF String ()
   , textbox             -- :: String -> UISF (Event String) String
   , textboxE            -- :: String -> UISF (Event String) String
   , title               -- :: String -> UISF a b -> UISF a b
@@ -23,11 +24,12 @@ module FRP.UISF
   , hSlider, vSlider    -- :: RealFrac a => (a, a) -> a -> UISF () a
   , hiSlider, viSlider  -- :: Integral a => a -> (a, a) -> a -> UISF () a
   , realtimeGraph       -- :: RealFrac a => Layout -> Time -> Color -> UISF [(a,Time)] ()
-  , Color (..)          -- data Color = Black | Blue | Green | Cyan | Red | Magenta | Yellow | White
+  , Color (..)          -- data Color = Black | Blue | Green | Cyan | Red | Magenta | Yellow | White ...
   , histogram           -- :: RealFrac a => Layout -> UISF (Event [a]) ()
   , histogramWithScale  -- :: RealFrac a => Layout -> UISF (SEvent [(a,String)]) ()
   , scrollable          -- :: Layout -> Dimension -> UISF a b -> UISF a b
-  , listbox             -- :: (Eq a, Show a) => UISF ([a], Int) Int
+  , listbox             -- :: (Eq a, Show a) => [a] -> Int -> UISF (SEvent [a], SEvent Int) Int
+  , listbox'            -- :: (Eq a, Show a) => UISF ([a], Int) Int
   , canvas              -- :: Dimension -> UISF (Event Graphic) ()
   , canvas'             -- :: Layout -> (a -> Dimension -> Graphic) -> UISF (Event a) ()
   -- Widget Utilities
@@ -38,10 +40,13 @@ module FRP.UISF
   , makeLayout          -- :: LayoutType -> LayoutType -> Layout
   , LayoutType (..)     -- data LayoutType = Stretchy { minSize :: Int } | Fixed { fixedSize :: Int }
   , Layout              -- data Layout = Layout {..}
+  -- Time, effects, and asynchrony
   , getTime             -- :: UISF () Time
   , getDeltaTime        -- :: UISF () DeltaT
-  , asyncUISFV          -- :: NFData b => Double -> Double -> Automaton a b -> UISF a ([b], Bool)
-  , asyncUISFE          -- :: NFData b => Automaton a b -> UISF (SEvent a) (SEvent b)
+  , ArrowIO(..)
+  , asyncVT
+  , asyncE
+  , asyncC
   , module FRP.UISF.AuxFunctions
   , module Control.Arrow
   ) where
@@ -52,6 +57,7 @@ import FRP.UISF.Widget
 import FRP.UISF.Graphics (Color (..), Dimension)
 
 import FRP.UISF.AuxFunctions
+import FRP.UISF.Asynchrony
 import Control.Arrow
 
 {-# DEPRECATED getTime "As of UISF-0.4.0.0, use accumTime instead, which is a little different but should work fine" #-}
