@@ -107,13 +107,14 @@ withDisplay sf = proc a -> do
 --
 --  The static argument provides the textbox with initial text.
 textbox :: String -> UISF (SEvent String) String
-textbox = textField 1
+textbox = setLayout layout . textField
+  where layout = makeLayout (Stretchy $ padding * 2) (Fixed $ textHeight "" + padding * 2)
 
--- | TextField lets you specify a multiline textbox (and eventually type newlines) 
-textField :: Int -> String -> UISF (SEvent String) String
-textField y startingVal = proc ms -> do
+-- | TextFields lets you specify a multiline textbox (and eventually type newlines) 
+textField :: String -> UISF (SEvent String) String
+textField startingVal = proc ms -> do
   rec s  <- delay startingVal -< ts
-      ts <- textbox' y -< maybe s id ms
+      ts <- textbox' -< maybe s id ms
   returnA -< ts
 
 {-# DEPRECATED textboxE "As of UISF-0.4.0.0, use textbox instead" #-}
@@ -122,14 +123,14 @@ textboxE = textbox
 -- | The textbox' variant of textbox contains no internal state about 
 --  the text it displays.  Thus, it must be paired with rec and delay 
 --  and used bidirectionally to be effective.
-textbox' :: Int -> UISF String String
-textbox' y = focusable $ 
+textbox' :: UISF String String
+textbox' = focusable $ 
   conjoin $ withCTX $ proc (ctx,s) -> do
     inFocus <- isInFocus -< ()
     k <- getEvents -< ()
     rec let (s', i) = if inFocus then update s iPrev ctx k else (s, iPrev)
         iPrev <- delay 0 -< i
-    displayStr -< seq iPrev s'
+    displayField True -< seq iPrev s'
     inf <- delay False -< inFocus
     b <- if inf then timer -< 0.5 else returnA -< Nothing
     b' <- edge -< not inFocus --For use in drawing the cursor
@@ -147,7 +148,7 @@ textbox' y = focusable $
     clb i s = if (take 2 . drop (i-2) $ s) == ['\n'] then 2 else 1
     cla i s = if (take 2 . drop (i) $ s) == ['\n'] then 2 else 1
     texth = (textHeight "") + padding * 2
-    displayLayout = makeLayout (Stretchy $ padding * 2) (Fixed $ y*texth)
+    displayLayout = makeLayout (Stretchy $ padding * 2) (Stretchy texth)
     update s i c ev = let (clav,clbv) = (cla i s, clb i s) in case ev of
       (Key c _ True)             -> let (t,d) = splitAt i s in (t ++ c:d, i+1)
       (SKey KeyBackspace _ True) -> let (t,d) = splitAt (i-clbv) s in (t ++ drop clbv d, max (i-clbv) 0)
