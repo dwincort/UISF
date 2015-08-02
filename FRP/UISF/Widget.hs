@@ -19,12 +19,9 @@ import FRP.UISF.Graphics
 import FRP.UISF.Keys
 import FRP.UISF.UITypes
 import FRP.UISF.UISF
-import FRP.UISF.AuxFunctions (SEvent, Time, DeltaT, accumTime, timer, edge, delay, constA, concatA)
+import FRP.UISF.AuxFunctions
 
 import Control.Arrow
-import Data.Maybe (fromMaybe)
-import Data.List.Utils
-import Data.List
 
 ------------------------------------------------------------
 -- * Widgets
@@ -51,22 +48,17 @@ label s = mkBasicWidget layout draw
 --  entire String: if given True, it will prefer the older characters 
 --  (cutting off later text), and if given False, it will prefer the 
 --  newer characters (cutting off older ones.
-displayField :: Bool -> UISF String ()
-displayField preferOld = mkWidget "" layout (\v v' _ _ -> ((), v, v /= v')) draw 
+displayField :: WrapSetting -> UISF String ()
+displayField wrap = mkWidget "" layout (\v v' _ _ -> ((), v, v /= v')) draw 
   where
     minh = textHeight "" + padding * 2
     layout = makeLayout (Stretchy $ padding * 2) (Stretchy minh)
     draw b@((x,y), (w, h)) _ s = 
       let th = textHeight s
           w' = w - padding * 2
-          numLines = (h - padding * 2) `div` th
-          -- For some reason, it's important that s never be fully evaluated.
-          -- This means don't check the length of chunkText s w' either
-          texts = case preferOld of
-            True  -> chunkText s w'
-            False -> reverse $ map reverse $ take numLines $ chunkText (reverse s) w'
-          pts = zip (replicate numLines $ x+padding) [y+padding, y+padding+th..]
-      in withColor Black (textLines $ zip pts texts)
+          (pts', texts) = prepText wrap 1 ((x+padding,y+padding), (w-padding*2, h-padding*2)) s
+          pts = map (\(x,y) -> (x+padding,y+padding)) pts'
+      in withColor Black (textLines $ zip pts $ map (fst . textWithinPixels w') texts)
          // shadowBox pushed b 
          // withColor White (rectangleFilled b)
 
@@ -74,7 +66,7 @@ displayField preferOld = mkWidget "" layout (\v v' _ _ -> ((), v, v /= v')) draw
 -- | DisplayStr is an output widget showing the instantaneous value of
 --   a signal of strings.
 displayStr :: UISF String ()
-displayStr = setLayout layout $ displayField True
+displayStr = setLayout layout $ displayField NoWrap
   where layout = makeLayout (Stretchy $ padding * 2) (Fixed $ textHeight "" + padding * 2)
 
 
@@ -110,13 +102,6 @@ textbox :: String -> UISF (SEvent String) String
 textbox = setLayout layout . textField
   where layout = makeLayout (Stretchy $ padding * 2) (Fixed $ textHeight "" + padding * 2)
 
--- | TextFields lets you specify a multiline textbox (and eventually type newlines) 
-textField :: String -> UISF (SEvent String) String
-textField startingVal = proc ms -> do
-  rec s  <- delay startingVal -< ts
-      ts <- textbox' -< maybe s id ms
-  returnA -< ts
-
 {-# DEPRECATED textboxE "As of UISF-0.4.0.0, use textbox instead" #-}
 textboxE = textbox
 
@@ -124,59 +109,64 @@ textboxE = textbox
 --  the text it displays.  Thus, it must be paired with rec and delay 
 --  and used bidirectionally to be effective.
 textbox' :: UISF String String
-textbox' = focusable $ 
-  conjoin $ withCTX $ proc (ctx,s) -> do
-    inFocus <- isInFocus -< ()
-    k <- getEvents -< ()
-    rec let (s', i) = if inFocus then update s iPrev ctx k else (s, iPrev)
-        iPrev <- delay 0 -< i
-    displayField True -< seq iPrev s'
-    inf <- delay False -< inFocus
-    b <- if inf then timer -< 0.5 else returnA -< Nothing
-    b' <- edge -< not inFocus --For use in drawing the cursor
-    rec willDraw <- delay True -< willDraw'
-        let willDraw' = maybe willDraw (const $ not willDraw) b --if isJust b then not willDraw else willDraw
-    canvas' displayLayout drawCursor -< case (inFocus, b, b', i == iPrev) of
-              (True,  Just _, _, _) -> Just (willDraw, i, s')
-              (True,  _, _, False)  -> Just (willDraw, i, s')
-              (False, _, Just _, _) -> Just (False, i, s')
-              _ -> Nothing
-    returnA -< s'
+textbox' = setLayout layout textField'
+  where layout = makeLayout (Stretchy $ padding * 2) (Fixed $ textHeight "" + padding * 2)
+
+-- | TextFields are like textboxes but can support multiple lines.  By 
+--  default, they are stretchy in the vertical dimension.
+textField :: String -> UISF (SEvent String) String
+textField startingVal = proc ms -> do
+  rec s  <- delay startingVal -< ts
+      ts <- textbox' -< maybe s id ms
+  returnA -< ts
+
+-- | A variant of textField that contains no internal state about the 
+--  text it displays.
+textField' :: UISF String String
+textField' = focusable $ (arr id &&& mytimer) >>> mkWidget ("",0,False) layout process draw 
   where
-    --cla/b is the length of the character before or after cursor
-    --this allows to skip over newlines and other unprintable specials 
-    clb i s = if (take 2 . drop (i-2) $ s) == ['\n'] then 2 else 1
-    cla i s = if (take 2 . drop (i) $ s) == ['\n'] then 2 else 1
-    texth = (textHeight "") + padding * 2
-    displayLayout = makeLayout (Stretchy $ padding * 2) (Stretchy texth)
-    update s i c ev = let (clav,clbv) = (cla i s, clb i s) in case ev of
-      (Key c _ True)             -> let (t,d) = splitAt i s in (t ++ c:d, i+1)
-      (SKey KeyBackspace _ True) -> let (t,d) = splitAt (i-clbv) s in (t ++ drop clbv d, max (i-clbv) 0)
-      (SKey KeyDelete    _ True) -> let (t,d) = splitAt i s in (t ++ drop clav d, i)
-      (SKey KeyLeft      _ True) -> (s, max (i-clbv) 0)
-      (SKey KeyRight     _ True) -> (s, min (i+clav) (length s))
-      (SKey KeyUp        _ True) -> (s, (fromMaybe 0 $ elemRIndex '\n' $ take i s))
-      (SKey KeyDown      _ True) -> (s, case elemIndex '\n' $ drop (i) s of
-                                                Just x -> i + x + 1 
-                                                Nothing -> i)
-      (SKey KeyEnd       _ True) -> (s, length s)
-      (SKey KeyHome      _ True) -> (s, 0)
-      (SKey KeyEnter     _ True) -> let (t,d) = splitAt i s in (t ++ '\n':d, i+1) 
-      (Button (x,_) LeftButton True) -> (s, min (length s) (length $ safehead $ chunkText s (x - xoffset c)))
-      _                          -> (s, max 0 $ min i $ length s)
-    drawCursor (False, _, _) _ = nullGraphic
-    drawCursor (True, i, s) (w,_h) = 
-        let i' = case elemRIndex '\n' $ take i s of
-                Just x -> (length $ drop x $ take i s)-1
-                Nothing -> i
-            linew = 1+padding + textWidth (take i' s)
-            nlcount = max 0 ((length $ split ['\n'] (take i s))-1)
-            offset = nlcount*11
-        in if linew > w then nullGraphic else withColor Black $
-            line (linew, padding+offset) (linew, texth-padding+offset)
-    xoffset = fst . fst . bounds
-    safehead [] = ""
-    safehead (x:_) = x
+    mytimer = constA 0.5 >>> timer >>> arr (fmap $ const not) >>> accum False
+    texth = textHeight ""
+    layout = makeLayout (Stretchy $ padding * 2) (Stretchy $ texth + padding * 2)
+    draw b@((x,y), (w, h)) inFocus (s,i,t) = 
+      let th = textHeight s
+          w' = w - padding * 2
+          (pts, texts) = prepText CharWrap 1 ((x+padding,y+padding), (w-padding*2, h-padding*2)) s
+          (i',j) = calcLine (i,0) texts
+          texts' = drop (j - length pts) texts
+          j' = min j (length pts)
+          cursory = y + padding + j'*texth
+          cursorx = x + 1+padding + textWidth (take i' $ texts' !! j)
+          cpt1 = (cursorx, cursory)
+          cpt2 = (cursorx, cursory+texth)
+          -- FIXME: The cursor will sometimes appear in the wrong place by a bit.
+      in withColor Black (textLines $ zip pts $ map (fst . textWithinPixels w') texts')
+         // whenG (inFocus && t && inside cpt1 b && inside cpt2 b) 
+                  (withColor Black $ line cpt1 cpt2)
+         // shadowBox pushed b 
+         // withColor White (rectangleFilled b)
+    calcLine ij [] = ij
+    calcLine (i,j) (s:ss) = let i' = i - length s in if i' > 0 then calcLine (i',j+1) ss else (i,j)
+    process (s,t) state@(_,i,_) b@((x,_),(w,_)) evt = (s', (s',i',t), state /= (s',i',t))
+      where 
+        (s',i') = case evt of
+          (Key c _ True)             -> let (t,d) = splitAt i s in (t ++ c:d, i+1)
+          (SKey KeyEnter     _ True) -> let (t,d) = splitAt i s in (t ++ '\n':d, i+1) 
+          (SKey KeyBackspace _ True) -> let (t,d) = splitAt (i-1) s in (t ++ drop 1 d, max (i-1) 0)
+          (SKey KeyDelete    _ True) -> let (t,d) = splitAt i s in (t ++ drop 1 d, i)
+          (SKey KeyLeft      _ True) -> (s, max (i-1) 0)
+          (SKey KeyRight     _ True) -> (s, min (i+1) (length s))
+          -- FIXME: These next two lines will only work with 9-width fixed-point fonts
+          -- FIXME: They also don't work properly with line breaks right now
+          (SKey KeyUp        _ True) -> (s, max 0 $ i-((w - padding * 2) `div` 9))
+          (SKey KeyDown      _ True) -> (s, min (length s) $ i+((w - padding * 2) `div` 9))
+          (SKey KeyEnd       _ True) -> (s, length s)
+          (SKey KeyHome      _ True) -> (s, 0)
+          (Button (bx,_) LeftButton True) -> (s, min (length s) (length $ fst $ textWithinPixels (bx - x) s))
+          _                          -> (s, max 0 $ min i $ length s)
+
+
+
 
 -----------
 -- Title --
@@ -391,9 +381,7 @@ listbox' = focusable $ mkWidget ([], -1) layout process draw
         // shadowBox pushed rect 
         // withColor White (rectangleFilled rect)
         where
-          trimText v = case chunkText (show v) (w - padding * 2) of
-            [] -> ""
-            (s:_) -> s
+          trimText v = fst $ textWithinPixels (w - padding * 2) (show v)
           genTextGraphic _ _ [] = nullGraphic
           genTextGraphic y i (v:vs) = (if i == 0
                 then withColor White (text (x + padding, y + padding) (trimText v))

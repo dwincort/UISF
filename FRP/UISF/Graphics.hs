@@ -18,7 +18,9 @@ module FRP.UISF.Graphics (
   nullGraphic,
   overGraphic,
   withColor, withColor',
-  text, textLines, textWidth, textHeight, chunkText,
+  text, textLines,
+  textWidth, textWithinPixels, textHeight,
+  WrapSetting(..), prepText, 
   ellipse, shearEllipse, line, polygon, polyline, polybezier, arc,
   circleFilled, circleOutline, rectangleFilled, rectangleOutline,
   translateGraphic, rotateGraphic, scaleGraphic,
@@ -33,7 +35,7 @@ import Graphics.Rendering.OpenGL (($=), GLfloat)
 import qualified Graphics.UI.GLUT as GLUT
 import Data.Ix (Ix)
 import Control.DeepSeq
-import Data.List.Utils
+import Data.Char (isSpace)
 
 {- $graphics
 This module provides an abstract representation for graphics in the GUI 
@@ -88,7 +90,8 @@ data Color = Black
            | DarkBeige
   deriving (Eq, Ord, Bounded, Enum, Ix, Show, Read)
 
-instance NFData Color
+instance NFData Color where
+  rnf (!_) = ()
 
 -- | RGB can be used to specify colors more precisely.  Create them with 
 --  one of the two smart constructors 'rgb' or 'rgbE'.
@@ -98,7 +101,8 @@ newtype RGB = RGB (Int, Int, Int)
 instance Show RGB where
   show (RGB (r, g, b)) = "{R="++show r++",G="++show g++",B="++show b++"}"
 
-instance NFData RGB
+instance NFData RGB where
+  rnf (RGB rgb) = rnf rgb
 
 -- | Generally used as an internal function for converting Color to RGB, 
 --  but can be used by anyone.
@@ -158,6 +162,7 @@ extractRGB (RGB (r, g, b)) = (fromIntegral r, fromIntegral g, fromIntegral b)
 --  you will clearly need access to the constructors to destruct the 
 --  graphics.  Please request this, and I can either export them 
 --  or we can discuss adding more rendering functions to this library.
+
 data Graphic = 
     NoGraphic
   | GText Point String
@@ -176,7 +181,7 @@ data Graphic =
 
 instance NFData Graphic where
   rnf NoGraphic = ()
-  rnf (GText (!_,!_) str) = ()
+  rnf (GText (!_,!_) str) = rnf str
   rnf (GPolyLine !pts) = ()
   rnf (GPolygon !pts) = ()
   rnf (GArc ((!_,!_),(!_,!_)) !_ !_) = ()
@@ -217,7 +222,7 @@ withColor' c g = GColor c g
 -- Text --
 ----------
 
--- In the future, these text functions should be parameterized by font.
+-- In the future, these text functions should be parametrized by font.
 
 -- | Paint the given text at the given point.
 text :: Point -> String -> Graphic
@@ -231,19 +236,72 @@ textLines = foldl (\g (p,s) -> overGraphic (text p s) g) nullGraphic
 textWidth :: String -> Int
 textWidth s = 9 * length s
 
+-- | Given a String and a number of pixels, returns the leading 
+--  substring that fits within the horizontal number of pixels along 
+--  with the remaining text of the String.
+textWithinPixels :: Int -> String -> (String, String)
+textWithinPixels i = splitAt (i `div` 9)
+
 -- | Returns the height of the String in pixels as it will be rendered
 textHeight :: String -> Int
 textHeight _ = 16 --It's really 15, but this makes rounding errors better
 
--- | Takes a String and a number of horizontal pixels and returns the 
---  string split into lines where each line will render in no more than 
---  the given number of pixels.  This is like word wrap, but it does 
---  not take words themselves into account.
---  Perhaps a future function will implement actual word wrap.
-chunkText :: String -> Int -> [String]
-chunkText [] _ = []
-chunkText s i = let (t,d) = splitAt (i `div` 9) s in t:chunkText d i
+-- | The Wrap Setting is used to determine how to split up a long piece 
+--  of text.
+data WrapSetting = NoWrap | CharWrap | WordWrap
+  deriving (Eq, Show)
 
+-- | Turn the given String into a list of Strings.  If the wrap setting 
+--  is NoWrap, then this is basically just the lines function.  If it 
+--  is CharWrap or WordWrap, then no string in the list will be wider 
+--  than the width of the bounding box.  The returned list of points 
+--  indicate each Point where a line should be drawn.  Note that this 
+--  list may not be the same length as the list of strings.
+--
+--  Typically, this will be used in conjunction with zip and textLines 
+--  to produce text graphics.
+prepText :: WrapSetting    -- ^ Whether we prefer newer or older text
+         -> Double             -- ^ Line spacing
+         -> Rect               -- ^ Bounding Box
+         -> String             -- ^ The text to print (which is allowed to have new lines)
+         -> ([Point], [String])
+prepText wrap spacing ((x,y),(w,h)) s = (pts, outStrs) where
+  lineHeight = round (fromIntegral (textHeight s) * spacing)
+  numLines = h `div` lineHeight
+  pts = zip (replicate numLines x) [y, y+lineHeight..]
+  outStrs = concatMap (wrapText wrap w) (linesWith s)
+
+-- | wrapText takes a wrap setting, a width, and a string, and turns 
+--  it into a list of strings representing each wrapped line.  Strings 
+--  are assumed to have no line breaks in them.  Calling unlines on the 
+--  output will create a String that is wrapped.
+wrapText :: WrapSetting -> Int -> String -> [String]
+wrapText NoWrap _ s = [s]
+wrapText CharWrap _ [] = []
+wrapText CharWrap i s = let (t,d) = textWithinPixels i s in t:wrapText CharWrap i d
+wrapText WordWrap i s = f i "" (wordsWith s) where
+  f _ [] [] = []
+  f _ sofar [] = [sofar]
+  f _ [] (w:ws) = if textWidth w > i 
+                  then let (t,d) = textWithinPixels i w in t:f i "" (d:ws)
+                  else f (i-textWidth w) w ws
+  f j sofar (w:ws) = if textWidth w > j 
+                     then sofar:f i "" (w:ws)
+                     else f (j-textWidth w) (sofar++w) ws
+
+wordsWith :: String -> [String]
+wordsWith s = case break isSpace s of
+                 (word,"") -> [word]
+                 (word,s') -> (word++wh) : wordsWith s''
+                                where (wh, s'') = span isSpace s'
+
+linesWith s = cons (case break (== '\n') s of
+                      (l, "") -> (l,[])
+                      (l, s') -> (l++"\n", case s' of
+                                             []    -> []
+                                             _:s'' -> linesWith s''))
+  where
+    cons ~(h, t) =  h : t
 
 ------------
 -- Shapes --
@@ -367,16 +425,16 @@ renderGraphicInOpenGL s (GColor (RGB (r,g,b)) graphic) = (GL.color color >> rend
   c2f i = fromIntegral i / 255
 
 renderGraphicInOpenGL _ (GText (x,y) str) = 
-  let lines = zip (split ['\n'] str) [1..]
+  let tlines = zip (lines str) [0..]
       drawLine (s,i) = do 
 --      This code is used for Bitmap fonts (raster offset values may need to be adjusted)
-        GL.currentRasterPosition $= GLUT.Vertex4 (fromIntegral x) (fromIntegral y + i*11) 0 1
+        GL.currentRasterPosition $= GLUT.Vertex4 (fromIntegral x) (fromIntegral y + 11 + i*16) 0 1
         GLUT.renderString GLUT.Fixed9By15 s
 --      This code is used for Stroke fonts (scale and translate values may need to be adjusted)
 --        GL.translate (vector (x, y+16*(i+1)))
---        GL.scale 0.1 (-0.1) (1::GLfloat)
+--        GL.scale 0.12 (-0.12) (1::GLfloat)
 --        GLUT.renderString GLUT.MonoRoman s
-  in GL.preservingMatrix $ mapM_ drawLine lines
+  in GL.preservingMatrix $ mapM_ drawLine tlines
 
 renderGraphicInOpenGL _ (GPolyLine ps) = 
   GL.renderPrimitive GL.LineStrip (mapM_ vertex ps)
