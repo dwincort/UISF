@@ -117,7 +117,7 @@ textbox' = setLayout layout textField'
 textField :: String -> UISF (SEvent String) String
 textField startingVal = proc ms -> do
   rec s  <- delay startingVal -< ts
-      ts <- textbox' -< maybe s id ms
+      ts <- textField' -< maybe s id ms
   returnA -< ts
 
 -- | A variant of textField that contains no internal state about the 
