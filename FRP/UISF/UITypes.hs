@@ -135,7 +135,7 @@ data LayoutType =
 
 -- | The null layout is useful for \"widgets\" that do not appear or 
 --   take up space on the screen.
-nullLayout = Layout 0 0 0 0 0 0 0
+nullLayout = NullLayout --Layout 0 0 0 0 0 0 0
 
 
 -- | More complicated layouts can be manually constructed with direct 
@@ -153,7 +153,7 @@ nullLayout = Layout 0 0 0 0 0 0 0
 -- 4. lFill specifies how much expanding space (in comparative units) this 
 --    widget should fill out in excess space that would otherwise be unused.
 
-data Layout = Layout
+data Layout = NullLayout | Layout
   { wStretch :: Int
   , hStretch :: Int
   , wFixed   :: Int
@@ -175,32 +175,33 @@ data Layout = Layout
 -- | Divides the CTX among the two given layouts.
 
 divideCTX :: CTX -> Layout -> Layout -> (CTX, CTX)
-divideCTX ctx@(CTX a ((x, y), (w, h)) c) 
-          ~(Layout wStretch  hStretch  wFixed  hFixed  wMin  hMin  lFill) 
-          ~(Layout wStretch' hStretch' wFixed' hFixed' wMin' hMin' lFill') =
-  if c then (ctx, ctx) else
-  case a of
-    TopDown   -> (CTX a ((x, y),                 (w1T, h1T)) c, 
-                  CTX a ((x, y + h1T),           (w2T, h2T)) c)
-    BottomUp  -> (CTX a ((x, y + h - h1T),       (w1T, h1T)) c, 
-                  CTX a ((x, y + h - h1T - h2T), (w2T, h2T)) c)
-    LeftRight -> (CTX a ((x, y),                 (w1L, h1L)) c, 
-                  CTX a ((x + w1L, y),           (w2L, h2L)) c)
-    RightLeft -> (CTX a ((x + w - w1L, y),       (w1L, h1L)) c, 
-                  CTX a ((x + w - w1L - w2L, y), (w2L, h2L)) c)
-  where
-    (w1L,w2L,w1T,w2T) = calc w wStretch wStretch' wFixed wFixed' wMin wMin' lFill lFill'
-    (h1T,h2T,h1L,h2L) = calc h hStretch hStretch' hFixed hFixed' hMin hMin' lFill lFill'
-    calc len stretch stretch' fixed fixed' lmin lmin' fill fill' = (st1, st2, fi1, fi2) where
-      portion s = div' (s * (len - fixed - fixed')) (stretch + stretch')
-      (st1,st2) = let u = min len $ fixed  + max lmin  (portion stretch)
-                      v =           fixed' + max lmin' (portion stretch')
-                      por f = div' (f * (len - u - v)) (fill + fill')
-                  in if u+v > len then (u, len-u) else (u + por fill, v + por fill')
-      fi1 = if fill  > 0 then len else max lmin  (if stretch  == 0 then fixed  else len)
-      fi2 = if fill' > 0 then len else max lmin' (if stretch' == 0 then fixed' else len)
-    div' b 0 = 0
-    div' b d = div b d
+divideCTX ctx@(CTX a ((x, y), (w, h)) c) l1 l2 = if c then (ctx,ctx) else case (l1,l2) of
+  (NullLayout, _) -> (CTX a ((0,0),(0,0)) c, ctx)
+  (_, NullLayout) -> (ctx, CTX a ((0,0),(0,0)) c)
+  ((Layout wStretch  hStretch  wFixed  hFixed  wMin  hMin  lFill), 
+   (Layout wStretch' hStretch' wFixed' hFixed' wMin' hMin' lFill')) ->
+      case a of
+        TopDown   -> (CTX a ((x, y),                 (w1T, h1T)) c, 
+                      CTX a ((x, y + h1T),           (w2T, h2T)) c)
+        BottomUp  -> (CTX a ((x, y + h - h1T),       (w1T, h1T)) c, 
+                      CTX a ((x, y + h - h1T - h2T), (w2T, h2T)) c)
+        LeftRight -> (CTX a ((x, y),                 (w1L, h1L)) c, 
+                      CTX a ((x + w1L, y),           (w2L, h2L)) c)
+        RightLeft -> (CTX a ((x + w - w1L, y),       (w1L, h1L)) c, 
+                      CTX a ((x + w - w1L - w2L, y), (w2L, h2L)) c)
+      where
+        (w1L,w2L,w1T,w2T) = calc w wStretch wStretch' wFixed wFixed' wMin wMin' lFill lFill'
+        (h1T,h2T,h1L,h2L) = calc h hStretch hStretch' hFixed hFixed' hMin hMin' lFill lFill'
+        calc len stretch stretch' fixed fixed' lmin lmin' fill fill' = (st1, st2, fi1, fi2) where
+          portion s = div' (s * (len - fixed - fixed')) (stretch + stretch')
+          (st1,st2) = let u = min len $ fixed  + max lmin  (portion stretch)
+                          v =           fixed' + max lmin' (portion stretch')
+                          por f = div' (f * (len - u - v)) (fill + fill')
+                      in if u+v > len then (u, len-u) else (u + por fill, v + por fill')
+          fi1 = if fill  > 0 then len else max lmin  (if stretch  == 0 then fixed  else len)
+          fi2 = if fill' > 0 then len else max lmin' (if stretch' == 0 then fixed' else len)
+        div' b 0 = 0
+        div' b d = div b d
 
 
 -----------------
@@ -209,6 +210,8 @@ divideCTX ctx@(CTX a ((x, y), (w, h)) c)
 -- | Merge two layouts into one.
 
 mergeLayout :: Flow -> Layout -> Layout -> Layout
+mergeLayout a NullLayout l = l
+mergeLayout a l NullLayout = l
 mergeLayout a (Layout n m u v minw minh lFill) (Layout n' m' u' v' minw' minh' lFill') = 
   case a of
     TopDown   -> Layout (max' n n') (m + m') (max u u') (v + v') (max minw minw') (minh + minh') lFill''
@@ -230,11 +233,11 @@ mergeLayout a (Layout n m u v minw minh lFill) (Layout n' m' u' v' minw' minh' l
 -- based on their layouts and the context.
 -- TODO: Make sure this works as well as it should
 mergeGraphics :: CTX -> (Graphic, Layout) -> (Graphic, Layout) -> Graphic
-mergeGraphics ctx (g1, l1) (g2, l2) = case (l1 == nullLayout, l2 == nullLayout) of
-  (True,  True)  -> nullGraphic
-  (True,  False) -> g2
-  (False, True)  -> g1
-  (False, False) -> overGraphic g2 g1
+mergeGraphics ctx (g1, l1) (g2, l2) = case (l1, l2) of
+  (NullLayout,  NullLayout)  -> nullGraphic
+  (NullLayout,  _) -> g2
+  (_, NullLayout)  -> g1
+  (_, _) -> overGraphic g2 g1
 
 
 ------------------------------------------------------------
