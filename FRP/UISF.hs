@@ -11,9 +11,10 @@ module FRP.UISF
   , displayStr          -- :: UISF String ()
   , display             -- :: Show a => UISF a ()
   , withDisplay         -- :: Show b => UISF a b -> UISF a b
-  , displayField        -- :: Bool -> UISF String ()
+  , WrapSetting(..)     -- data WrapSetting = NoWrap | CharWrap | WordWrap
+  , displayField        -- :: WrapSetting -> UISF String ()
   , textbox             -- :: String -> UISF (Event String) String
-  , textField           -- :: Int -> String -> UISF (Event String) String
+  , textField           -- :: WrapSetting -> String -> UISF (Event String) String
   , textboxE            -- :: String -> UISF (Event String) String
   , title               -- :: String -> UISF a b -> UISF a b
   , spacer              -- :: UISF a a
@@ -55,7 +56,7 @@ module FRP.UISF
 import FRP.UISF.UITypes
 import FRP.UISF.UISF
 import FRP.UISF.Widget
-import FRP.UISF.Graphics (Color (..), Dimension)
+import FRP.UISF.Graphics (Color (..), WrapSetting(..),Dimension)
 
 import FRP.UISF.AuxFunctions
 import FRP.UISF.Asynchrony
