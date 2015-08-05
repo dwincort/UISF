@@ -1,7 +1,6 @@
 UISF FUTURE FEATURES/CHANGES
 
 Graphics and Widgets
-- Textboxes currently have a hidden newline character at the end of each line, which makes certain cursor positioning look wrong.
 - Multiple font support.
 - make a data type UIText: UIText may be expanded (for instance with font, size, etc.) but is essentially a list of (textColor, bgColor, font, size, String).  Label takes a UIText, and certain versions of textbox work with UIText.  Use OverloadedStrings to make this super effective.  A function UIText -> Dimension which calculates how many pixels tall and wide the text will render.
 - mkBasicWidget should be (a -> b) and its draw routine should take either a or b or both.  Then, I can make a dynamic label that prints its input.  Or maybe not.

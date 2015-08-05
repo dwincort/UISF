@@ -84,6 +84,7 @@ data Color = Black
            | Magenta
            | Yellow
            | White
+           | Gray
            | VLightBeige
            | LightBeige -- ^ This is the default background color for the UI window.
            | MediumBeige
@@ -115,6 +116,7 @@ colorToRGB Red     = RGB (255, 0, 0)
 colorToRGB Magenta = RGB (255, 0, 255)
 colorToRGB Yellow  = RGB (255, 255, 0)
 colorToRGB White   = RGB (255, 255, 255)
+colorToRGB Gray    = RGB (128, 128, 128)
 colorToRGB VLightBeige = rgbE 0xf1 0xef 0xe2
 colorToRGB LightBeige  = rgbE 0xec 0xe9 0xd8
 colorToRGB MediumBeige = rgbE 0xac 0xa8 0x99

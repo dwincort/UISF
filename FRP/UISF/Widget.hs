@@ -22,6 +22,7 @@ import FRP.UISF.UISF
 import FRP.UISF.AuxFunctions
 
 import Control.Arrow
+import Data.Char (isSpace)
 
 ------------------------------------------------------------
 -- * Widgets
@@ -123,14 +124,13 @@ textField wrap startingVal = proc ms -> do
 -- | A variant of textField that contains no internal state about the 
 --  text it displays.
 textField' :: WrapSetting -> UISF String String
-textField' wrap = focusable $ (arr id &&& mytimer) >>> mkWidget ("",0,False) layout process draw 
+textField' wrap = focusable $ mkWidget ("",0) layout process draw 
   where
     paddedRect :: Rect -> Rect
     paddedRect ((x,y), (w, h)) = ((x+padding,y+padding), (w-padding*2, h-padding*2))
-    mytimer = constA 0.5 >>> timer >>> arr (fmap $ const not) >>> accum False
     texth = textHeight ""
     layout = makeLayout (Stretchy $ padding * 2) (Stretchy $ texth + padding * 2)
-    draw b@((x,y), (w, h)) inFocus (s,i,t) = 
+    draw b@((x,y), (w, h)) inFocus (s,i) = 
       let th = textHeight s
           w' = w - padding * 2
           (pts, texts) = prepText wrap 1 (paddedRect b) s
@@ -141,15 +141,20 @@ textField' wrap = focusable $ (arr id &&& mytimer) >>> mkWidget ("",0,False) lay
           cursorx = x + 1+padding + textWidth (take i' $ texts' !! j)
           cpt1 = (cursorx, cursory)
           cpt2 = (cursorx, cursory+texth)
-          -- FIXME: The cursor will sometimes appear in the wrong place by a bit.
       in withColor Black (textLines $ zip pts $ map (fst . textWithinPixels w') texts')
-         // whenG (inFocus && t && inside cpt1 b && inside cpt2 b) 
-                  (withColor Black $ line cpt1 cpt2)
+         // whenG (inFocus && inside cpt1 b && inside cpt2 b) 
+                  (withColor Gray $ line cpt1 cpt2)
          // shadowBox pushed b 
          // withColor White (rectangleFilled b)
     calcLine ij [] = ij
-    calcLine (i,j) (s:ss) = let i' = i - length s in if i' > 0 then calcLine (i',j+1) ss else (i,j)
-    process (s,t) state@(_,i,_) b@((x,y),(w,_)) evt = (snew, (snew,inew,t), state /= (snew,inew,t))
+    calcLine (i,j) [s] = if i < length s then (i,j) else case reverse s of
+      '\n':_ -> (0,j+1)
+      _ -> (i,j)
+    calcLine (i,j) (s:ss) = let i' = i - length s in if i' >= 0 then calcLine (i',j+1) ss else (i,j)
+    trimTailWS s = case reverse s of
+      (c:s') -> if isSpace c then reverse s' else s
+      _ -> s
+    process s state@(_,i) b@((x,y),(w,_)) evt = (snew, (snew,inew), state /= (snew,inew))
       where 
         (pts, texts) = prepText wrap 1 (paddedRect b) s
         (i',j) = calcLine (i,0) texts
@@ -167,18 +172,18 @@ textField' wrap = focusable $ (arr id &&& mytimer) >>> mkWidget ("",0,False) lay
           -- Note that because j is 0-indexed, we add 1 whenever we do a take.
           (SKey KeyUp        _ True) -> (s, if j <= 0 then 0 else
             sum (map length $ take (j-1) texts) +
-            (length $ fst $ textWithinPixels (textWidth $ take i' (texts!!j)) (texts!!(j-1))))
+            (length $ fst $ textWithinPixels (textWidth $ take i' (texts!!j)) $ trimTailWS (texts!!(j-1))))
           -- KeyDown is the same as KeyUp but in the other direction.
           (SKey KeyDown      _ True) -> (s, if j >= length texts - 1 then length s else
             sum (map length $ take (j+1) texts) + 
-            (length $ fst $ textWithinPixels (textWidth $ take i' (texts!!j)) (texts!!(j+1))))
+            (length $ fst $ textWithinPixels (textWidth $ take i' (texts!!j)) $ trimTailWS (texts!!(j+1))))
           (SKey KeyEnd       _ True) -> (s, length s)
           (SKey KeyHome      _ True) -> (s, 0)
           (Button (bx,by) LeftButton True) -> (s,
             let j' = ((by - y) `div` texth) + max 0 (j - length pts)
             in if j' >= length texts then length s 
                else sum (map length $ take j' texts) + 
-                    (length $ fst $ textWithinPixels (bx - x) (texts!!j')))
+                    (length $ fst $ textWithinPixels (bx - x) $ trimTailWS (texts!!j')))
           _  -> (s, max 0 $ min i $ length s)
 
 
