@@ -32,6 +32,7 @@ Library
         FRP.UISF.Examples.Examples,
         FRP.UISF.AuxFunctions,
         FRP.UISF.Asynchrony,
+        FRP.UISF.FontSupport,
         FRP.UISF.Glut,
         FRP.UISF.Graphics,
         FRP.UISF.Keys,
@@ -44,4 +45,4 @@ Library
   build-depends:
         base >= 4 && < 5, containers, transformers, 
         arrows >= 0.4, OpenGL >= 2.8, GLUT >= 2.5,
-        deepseq >= 1.3, stm >= 2.4
+        deepseq >= 1.3, stm >= 2.4, array

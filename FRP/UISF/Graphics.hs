@@ -31,11 +31,14 @@ module FRP.UISF.Graphics (
 
 
 import qualified Graphics.Rendering.OpenGL as GL
+import qualified FRP.UISF.FontSupport as FS
 import Graphics.Rendering.OpenGL (($=), GLfloat)
 import qualified Graphics.UI.GLUT as GLUT
 import Data.Ix (Ix)
 import Control.DeepSeq
 import Data.Char (isSpace)
+
+defaultFont = GLUT.Fixed9By15
 
 {- $graphics
 This module provides an abstract representation for graphics in the GUI 
@@ -236,17 +239,17 @@ textLines = foldl (\g (p,s) -> overGraphic (text p s) g) nullGraphic
 
 -- | Returns the width of the String in pixels as it will be rendered
 textWidth :: String -> Int
-textWidth s = 9 * length s
+textWidth = FS.textWidth defaultFont
 
 -- | Given a String and a number of pixels, returns the leading 
 --  substring that fits within the horizontal number of pixels along 
 --  with the remaining text of the String.
 textWithinPixels :: Int -> String -> (String, String)
-textWithinPixels i = splitAt (i `div` 9)
+textWithinPixels = FS.textWithinPixels defaultFont
 
 -- | Returns the height of the String in pixels as it will be rendered
 textHeight :: String -> Int
-textHeight _ = 16 --It's really 15, but this makes rounding errors better
+textHeight = FS.textHeight defaultFont
 
 -- | The Wrap Setting is used to determine how to split up a long piece 
 --  of text.
@@ -430,8 +433,10 @@ renderGraphicInOpenGL _ (GText (x,y) str) =
   let tlines = zip (lines str) [0..]
       drawLine (s,i) = do 
 --      This code is used for Bitmap fonts (raster offset values may need to be adjusted)
-        GL.currentRasterPosition $= GLUT.Vertex4 (fromIntegral x) (fromIntegral y + 11 + i*16) 0 1
-        GLUT.renderString GLUT.Fixed9By15 s
+        let mod = (i * textHeight s) + (textHeight s `div` 2) + 3
+        GL.currentRasterPosition $= GLUT.Vertex4 (fromIntegral x) 
+            (fromIntegral $ y + mod) 0 1
+        GLUT.renderString defaultFont s
 --      This code is used for Stroke fonts (scale and translate values may need to be adjusted)
 --        GL.translate (vector (x, y+16*(i+1)))
 --        GL.scale 0.12 (-0.12) (1::GLfloat)
