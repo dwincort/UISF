@@ -99,7 +99,9 @@ openWindow rgb title (x,y) = do
   let w = WindowData (writeIORef gRef) (readIORef wRef)
                      (readIORef wdRef) (nextEvent tryReadTChan eChan) 
                      (nextEvent tryPeekTChan eChan) guiTime
-  forkOS (f gRef wRef wdRef eChan continue)
+  -- REMARK: forkIO seems to work fine, but if GLUT starts misbehaving, 
+  --    this may need to change to forkOS.
+  forkIO (f gRef wRef wdRef eChan continue)
   takeMVar continue
   return w
  where 
