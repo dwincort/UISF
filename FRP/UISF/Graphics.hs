@@ -7,7 +7,7 @@
 -- Maintainer  :  dwc@cs.yale.edu
 -- Stability   :  experimental
 
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns, FlexibleInstances, TypeSynonymInstances #-}
 module FRP.UISF.Graphics (
   -- $graphics
   -- * Useful Types
@@ -19,8 +19,11 @@ module FRP.UISF.Graphics (
   overGraphic,
   withColor, withColor',
   text, textLines,
+  UIText(..), UITexty(..),
+  uitextToString, splitUIText, takeUIText, dropUIText, uitextLen,
+  pureUIText, appendUIText, coloredUIText, rgbUIText, fontUIText,
   textWidth, textWithinPixels, textHeight,
-  WrapSetting(..), prepText, 
+  WrapSetting(..), prepText,
   ellipse, shearEllipse, line, polygon, polyline, polybezier, arc,
   circleFilled, circleOutline, rectangleFilled, rectangleOutline,
   translateGraphic, rotateGraphic, scaleGraphic,
@@ -37,6 +40,8 @@ import qualified Graphics.UI.GLUT as GLUT
 import Data.Ix (Ix)
 import Control.DeepSeq
 import Data.Char (isSpace)
+import Data.String (IsString(..))
+import Data.List (unfoldr)
 
 defaultFont = GLUT.Fixed9By15
 
@@ -156,6 +161,200 @@ extractRGB :: (Integral r, Integral g, Integral b) => RGB -> (r,g,b)
 extractRGB (RGB (r, g, b)) = (fromIntegral r, fromIntegral g, fromIntegral b)
 
 ------------------------------------------------------------
+-- UI Text
+------------------------------------------------------------
+
+-- | Text in UISF can be rendered in multiple fonts and colors, 
+--  so we need a more powerful data type to encode it.  The UIText 
+--  data type does this.
+newtype UIText = UIText {unwrapUIT :: [(Maybe RGB, FS.BitmapFont, String)]}
+  deriving (Eq, Show)
+instance NFData UIText where
+  rnf (UIText lst) = rnf lst
+instance IsString UIText where
+  fromString = pureUIText
+
+-- | To retain easy compatibility with Strings (or other text 
+--  representations), we also provide the UITexty class, which is 
+--  how all widgets that accept UIText should do so.
+class UITexty a where
+  toUIText :: a -> UIText
+
+instance UITexty UIText where
+  toUIText = id
+instance UITexty String where
+  toUIText = pureUIText
+--instance UITexty Text where
+--  toUIText = PureText . unpack
+
+-- | The empty string in UIText.
+emptyUIText :: UIText
+emptyUIText = UIText []
+
+-- | Returns True when given an empty string and False otherwise.
+isEmptyUIText :: UIText -> Bool
+isEmptyUIText uit = go (unwrapUIT uit) where
+  go [] = True
+  go ((_,_,[]):rest) = go rest
+  go _ = False
+
+-- | Removes all font and color formatting from a UIText, returning 
+--  its underlying String representation.
+uitextToString :: UIText -> String
+uitextToString (UIText lst) = concatMap (\(_,_,s) -> s) lst
+
+-- | Returns the number of characters in a UIText.
+uitextLen :: UIText -> Int
+uitextLen = length . uitextToString
+
+-- | Take a certain number of characters off of a UIText
+takeUIText :: Int -> UIText -> UIText
+takeUIText n = fst . splitUIText n
+--takeUIText n (UIText uit) = UIText $ go n uit where
+--  go 0 uit = uit
+--  go n [] = []
+--  go n ((c,f,s):rest) = let n' = n - length s in
+--    if n' < 0 then (c,f,drop n s):rest else go n' rest
+
+-- | Drop a certain number of characters from a UIText
+dropUIText :: Int -> UIText -> UIText
+dropUIText n = snd . splitUIText n
+
+-- | Split a UIText at the given character point.
+splitUIText :: Int -> UIText -> (UIText, UIText)
+splitUIText n (UIText uit) = let (u1,u2) = go n [] uit in (UIText u1, UIText u2) where
+  go 0 taken rest = (reverse taken, rest)
+  go n taken [] = (reverse taken, [])
+  go n taken ((c,f,s):rest) = let n' = n - length s in
+    if n' >= 0 then go n' ((c,f,s):taken) rest
+    else let (t,d) = splitAt n s in (reverse ((c,f,t):taken), (c,f,d):rest)
+
+-- | A convenience function for taking a UITexty object directly to the 
+--  underlying (RGB,Font,String) list.
+unwrapUITexty :: UITexty s => s -> [(Maybe RGB, FS.BitmapFont, String)]
+unwrapUITexty = unwrapUIT . toUIText
+
+-- | Lifts a String to a UIText (with default color and font).
+pureUIText :: String -> UIText
+pureUIText s = UIText [(Nothing, defaultFont, s)]
+
+-- | Appends two UITexty objects together.
+appendUIText :: (UITexty s1, UITexty s2) => s1 -> s2 -> UIText
+appendUIText s1 s2 = UIText $ unwrapUITexty s1 ++ unwrapUITexty s2
+
+-- | Colors a UITexty object.
+coloredUIText :: UITexty s => Color -> s -> UIText
+coloredUIText c s = UIText $ map (\(_,f,str) -> (newC,f,str)) (unwrapUITexty s)
+ where newC = Just $ colorToRGB c
+
+-- | Colors a UITexty object with an exact RGB value.
+rgbUIText c s = UIText $ map (\(_,f,str) -> (c,f,str)) (unwrapUITexty s)
+
+-- | Converts the UITexty object to the given font.
+fontUIText f s = UIText $ map (\(c,_,str) -> (c,f,str)) (unwrapUITexty s)
+
+
+-- | Paint the given text at the given point.
+text :: UITexty s => Point -> s -> Graphic
+text p = GText p . toUIText
+
+-- | A convenience function for painting a set of (Point,String) pairs.
+textLines :: UITexty s => [(Point, s)] -> Graphic
+textLines = foldl (\g (p,s) -> overGraphic (text p s) g) nullGraphic
+
+-- | Returns the width of the String in pixels as it will be rendered
+textWidth :: UITexty s => s -> Int
+textWidth s = sum $ map (\(_,f,str) -> FS.textWidth f str) (unwrapUITexty s)
+
+-- | Given a String and a number of pixels, returns the leading 
+--  substring that fits within the horizontal number of pixels along 
+--  with the remaining text of the String.
+textWithinPixels :: UITexty s => Int -> s -> (UIText, UIText)
+textWithinPixels i s = let (s1,s2) = go i (unwrapUITexty s) []
+  in (UIText s1, UIText s2) where
+  go :: Int -> [(Maybe RGB, GLUT.BitmapFont, String)] -> [(Maybe RGB, GLUT.BitmapFont, String)] ->
+    ([(Maybe RGB, GLUT.BitmapFont, String)],[(Maybe RGB, GLUT.BitmapFont, String)])
+  go i [] sofar = (reverse sofar, [])
+  go i ((c,f,str):rest) sofar = let i' = i - (FS.textWidth f str)
+    in if i' >= 0
+       then go i' rest ((c,f,str):sofar)
+       else let (s1,s2) = FS.textWithinPixels f i str
+            in (reverse $ (c,f,s1):sofar, (c,f,s2):rest)
+
+-- | Returns the height of the String in pixels as it will be rendered
+textHeight :: UITexty s => s -> Int
+textHeight s = go (unwrapUITexty s) where
+  go [] = FS.textHeight defaultFont ""
+  go lst = maximum $ map (\(_,f,str) -> FS.textHeight f str) lst
+
+-- | The Wrap Setting is used to determine how to split up a long piece 
+--  of text.
+data WrapSetting = NoWrap | CharWrap | WordWrap
+  deriving (Eq, Show)
+
+-- | Turn the given String into a list of Strings.  If the wrap setting 
+--  is NoWrap, then this is basically just the lines function.  If it 
+--  is CharWrap or WordWrap, then no string in the list will be wider 
+--  than the width of the bounding box.  The returned list of points 
+--  indicate each Point where a line should be drawn.  Note that this 
+--  list may not be the same length as the list of strings.
+--
+--  Typically, this will be used in conjunction with zip and textLines 
+--  to produce text graphics.
+prepText :: (UITexty s)
+         => WrapSetting -- ^ Whether we prefer newer or older text
+         -> Double      -- ^ Line spacing
+         -> Rect        -- ^ Bounding Box
+         -> s           -- ^ The text to print (which is allowed to have new lines)
+         -> ([Point], [UIText])
+prepText wrap spacing ((x,y),(w,h)) s = (pts, outStrs) where
+  lineHeight = round (fromIntegral (textHeight s) * spacing)
+  numLines = h `div` lineHeight
+  pts = zip (replicate numLines x) [y, y+lineHeight..]
+  outStrs = concatMap (wrapText wrap w) (uitextLines $ toUIText s)
+
+-- | wrapText takes a wrap setting, a width, and a string, and turns 
+--  it into a list of strings representing each wrapped line.  Strings 
+--  are assumed to have no line breaks in them.  Calling unlines on the 
+--  output will create a String that is wrapped.
+wrapText :: UITexty s => WrapSetting -> Int -> s -> [UIText]
+wrapText NoWrap _ s = [toUIText s]
+wrapText CharWrap i s = if isEmptyUIText $ toUIText s
+    then []
+    else let (t,d) = textWithinPixels i s in t:wrapText CharWrap i d
+wrapText WordWrap i s = f i emptyUIText (uitextWords $ toUIText s) where
+  f :: Int -> UIText -> [UIText] -> [UIText]
+  f _ sofar [] = if isEmptyUIText sofar then [] else [sofar]
+  f j sofar (w:ws) = case isEmptyUIText sofar of
+    True  -> if textWidth w > i 
+             then let (t,d) = textWithinPixels i w in t:f i emptyUIText (d:ws)
+             else f (i-textWidth w) w ws
+    False -> if textWidth w > j 
+             then sofar:f i emptyUIText (w:ws)
+             else f (j-textWidth w) (appendUIText sofar w) ws
+
+
+uitextLines :: UIText -> [UIText]
+uitextLines = uitSplitter (== '\n') (splitAt 1)
+
+uitextWords :: UIText -> [UIText]
+uitextWords = uitSplitter isSpace (span isSpace)
+
+uitextLines' :: UIText -> [UIText]
+uitextLines' = uitSplitter (== '\n') (\x -> ([], drop 1 x))
+
+uitSplitter :: (Char -> Bool) -> (String -> (String,String)) -> UIText -> [UIText]
+uitSplitter checker splitter (UIText lst) = map UIText $ uitSplitter' lst where
+  uitSplitter' [] = []
+  uitSplitter' uitext = go uitext [] where
+    go [] sofar = [reverse sofar]
+    go ((c,f,s):rest) sofar = case break checker s of
+      (_, "") -> go rest ((c,f,s):sofar)
+      (l,s') -> reverse ((c,f,l++s1):sofar) : uitSplitter' ((c,f,s2):rest)
+        where (s1,s2) = splitter s'
+
+
+------------------------------------------------------------
 -- Graphic
 ------------------------------------------------------------
 
@@ -170,7 +369,7 @@ extractRGB (RGB (r, g, b)) = (fromIntegral r, fromIntegral g, fromIntegral b)
 
 data Graphic = 
     NoGraphic
-  | GText Point String
+  | GText Point UIText
   | GPolyLine [Point]
   | GPolygon [Point]
   | GArc Rect Angle Angle
@@ -222,91 +421,6 @@ withColor' :: RGB -> Graphic -> Graphic
 withColor' _ NoGraphic = NoGraphic
 withColor' c g = GColor c g
 
-
-----------
--- Text --
-----------
-
--- In the future, these text functions should be parametrized by font.
-
--- | Paint the given text at the given point.
-text :: Point -> String -> Graphic
-text = GText
-
--- | A convenience function for painting a set of (Point,String) pairs.
-textLines :: [(Point, String)] -> Graphic
-textLines = foldl (\g (p,s) -> overGraphic (text p s) g) nullGraphic
-
--- | Returns the width of the String in pixels as it will be rendered
-textWidth :: String -> Int
-textWidth = FS.textWidth defaultFont
-
--- | Given a String and a number of pixels, returns the leading 
---  substring that fits within the horizontal number of pixels along 
---  with the remaining text of the String.
-textWithinPixels :: Int -> String -> (String, String)
-textWithinPixels = FS.textWithinPixels defaultFont
-
--- | Returns the height of the String in pixels as it will be rendered
-textHeight :: String -> Int
-textHeight = FS.textHeight defaultFont
-
--- | The Wrap Setting is used to determine how to split up a long piece 
---  of text.
-data WrapSetting = NoWrap | CharWrap | WordWrap
-  deriving (Eq, Show)
-
--- | Turn the given String into a list of Strings.  If the wrap setting 
---  is NoWrap, then this is basically just the lines function.  If it 
---  is CharWrap or WordWrap, then no string in the list will be wider 
---  than the width of the bounding box.  The returned list of points 
---  indicate each Point where a line should be drawn.  Note that this 
---  list may not be the same length as the list of strings.
---
---  Typically, this will be used in conjunction with zip and textLines 
---  to produce text graphics.
-prepText :: WrapSetting    -- ^ Whether we prefer newer or older text
-         -> Double             -- ^ Line spacing
-         -> Rect               -- ^ Bounding Box
-         -> String             -- ^ The text to print (which is allowed to have new lines)
-         -> ([Point], [String])
-prepText wrap spacing ((x,y),(w,h)) s = (pts, outStrs) where
-  lineHeight = round (fromIntegral (textHeight s) * spacing)
-  numLines = h `div` lineHeight
-  pts = zip (replicate numLines x) [y, y+lineHeight..]
-  outStrs = concatMap (wrapText wrap w) (linesWith s)
-
--- | wrapText takes a wrap setting, a width, and a string, and turns 
---  it into a list of strings representing each wrapped line.  Strings 
---  are assumed to have no line breaks in them.  Calling unlines on the 
---  output will create a String that is wrapped.
-wrapText :: WrapSetting -> Int -> String -> [String]
-wrapText NoWrap _ s = [s]
-wrapText CharWrap _ [] = []
-wrapText CharWrap i s = let (t,d) = textWithinPixels i s in t:wrapText CharWrap i d
-wrapText WordWrap i s = f i "" (wordsWith s) where
-  f _ [] [] = []
-  f _ sofar [] = [sofar]
-  f _ [] (w:ws) = if textWidth w > i 
-                  then let (t,d) = textWithinPixels i w in t:f i "" (d:ws)
-                  else f (i-textWidth w) w ws
-  f j sofar (w:ws) = if textWidth w > j 
-                     then sofar:f i "" (w:ws)
-                     else f (j-textWidth w) (sofar++w) ws
-
-wordsWith :: String -> [String]
-wordsWith s = case break isSpace s of
-                 (word,"") -> [word]
-                 (word,s') -> (word++wh) : wordsWith s''
-                                where (wh, s'') = span isSpace s'
-
-linesWith s = cons (case break (== '\n') s of
-                      (l, "") -> (l,[])
-                      (l, s') -> (l++"\n", case s' of
-                                             []    -> []
-                                             _:s'' -> linesWith s''))
-  where
-    cons ~(h, t) =  h : t
 
 ------------
 -- Shapes --
@@ -429,19 +543,32 @@ renderGraphicInOpenGL s (GColor (RGB (r,g,b)) graphic) = (GL.color color >> rend
   color = GL.Color3 (c2f r) (c2f g) (c2f b :: GLfloat)
   c2f i = fromIntegral i / 255
 
-renderGraphicInOpenGL _ (GText (x,y) str) = 
-  let tlines = zip (lines str) [0..]
+renderGraphicInOpenGL _ (GText (x,y) uistr) = 
+  let tlines = zip (uitextLines' uistr) [0..]
       drawLine (s,i) = do 
+        -- We need to zipWith like this to get the String x-offsets.
+        let ss = unfoldr buildList (0,unwrapUIT s)
+            buildList (_,[]) = Nothing
+            buildList (x,(c,f,str):rest) = Just ((x,c,f,str), (x+FS.textWidth f str, rest))
+            th = textHeight s
+            yoff = (i * th) + (th `div` 2) + 3
+        mapM_ (drawStr yoff) ss
+      drawStr yoff (xoff, c, f, str) = GL.preservingMatrix $ do
+        case c of
+          Nothing -> return ()
+          Just (RGB (r,g,b)) -> GL.color color where
+            color = GL.Color3 (c2f r) (c2f g) (c2f b :: GLfloat)
+            c2f i = fromIntegral i / 255
 --      This code is used for Bitmap fonts (raster offset values may need to be adjusted)
-        let mod = (i * textHeight s) + (textHeight s `div` 2) + 3
-        GL.currentRasterPosition $= GLUT.Vertex4 (fromIntegral x) 
-            (fromIntegral $ y + mod) 0 1
-        GLUT.renderString defaultFont s
+        GL.currentRasterPosition $= GLUT.Vertex4 
+            (fromIntegral $ x + xoff) 
+            (fromIntegral $ y + yoff) 0 1
+        GLUT.renderString f str
 --      This code is used for Stroke fonts (scale and translate values may need to be adjusted)
 --        GL.translate (vector (x, y+16*(i+1)))
 --        GL.scale 0.12 (-0.12) (1::GLfloat)
 --        GLUT.renderString GLUT.MonoRoman s
-  in GL.preservingMatrix $ mapM_ drawLine tlines
+  in mapM_ drawLine tlines
 
 renderGraphicInOpenGL _ (GPolyLine ps) = 
   GL.renderPrimitive GL.LineStrip (mapM_ vertex ps)
@@ -541,4 +668,5 @@ vector (x,y) = GL.Vector3 (fromIntegral x) (fromIntegral y) 0
 
 vectorR :: (Double,Double) -> GL.Vector3 GLfloat
 vectorR (x,y) = GL.Vector3 (realToFrac x) (realToFrac y) 0
+
 

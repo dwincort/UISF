@@ -9,7 +9,8 @@
 module FRP.UISF.Examples.Examples where
 
 import FRP.UISF
-import FRP.UISF.Graphics (withColor', rgbE, rectangleFilled)
+import FRP.UISF.Graphics --(withColor', rgbE, rectangleFilled)
+import FRP.UISF.FontSupport (BitmapFont(..))
 
 import Numeric (showHex)
 
@@ -65,9 +66,9 @@ shoppinglist = title "Shopping List" $ topDown $ proc _ -> do
 -- controllable with RGB values by the sliders.
 colorDemo :: UISF () ()
 colorDemo = title "Color" $ leftRight $ proc _ -> do
-  r <- newColorSlider "R" -< ()
-  g <- newColorSlider "G" -< ()
-  b <- newColorSlider "B" -< ()
+  r <- newColorSlider (coloredUIText Red "R") -< ()
+  g <- newColorSlider (coloredUIText Green "G") -< ()
+  b <- newColorSlider (coloredUIText Blue "B") -< ()
   changed <- unique -< (r,g,b)
   pad (4,8,0,0) $ canvas' layout rect -< changed
   where
@@ -88,13 +89,36 @@ textboxdemo = title "Saving Text" $ topDown $ proc _ -> do
   rec str' <- delay "" -< if b then str else str'
   leftRight $ label "Saved value: " >>> displayStr -< str' 
 
+uitext :: UIText
+uitext = coloredUIText Red  "H" `appendUIText`
+    coloredUIText Yellow    "e" `appendUIText`
+    coloredUIText Green     "l" `appendUIText`
+    coloredUIText Cyan      "l" `appendUIText`
+    coloredUIText Blue      "o" `appendUIText`
+    coloredUIText Magenta  " W" `appendUIText`
+    coloredUIText Red       "o" `appendUIText`
+    coloredUIText Yellow    "r" `appendUIText`
+    coloredUIText Green     "l" `appendUIText`
+    coloredUIText Cyan      "d" `appendUIText`
+    coloredUIText Blue      "!"
+uitext' = fontUIText Helvetica18 uitext
+
+uitextdemo = title "Color and Fonts" $ constA Nothing >>> textField CharWrap uitext' >>> constA ()
+
 -- | This is the main demo that incorporates all of the other examples 
 -- together.  In addition to demonstrating how 
 -- different widgets can connect, it also shows off the tabbing 
 -- behavior built in to the GUI.  Pressing tab cycles through focusable 
 -- elements, and pressing shift-tab cycles in reverse.
 main :: IO ()
-main = runUI (defaultUIParams {uiSize=(500, 500)}) $ 
+main = runUI (defaultUIParams {uiSize=(500, 520), uiCloseOnEsc=True}) $ 
   (leftRight $ (bottomUp $ timeEx >>> buttonEx) >>> checkboxEx >>> radioButtonEx) >>>
-  (leftRight $ shoppinglist >>> colorDemo) >>> textboxdemo
+  (leftRight $ shoppinglist >>> colorDemo) >>> textboxdemo >>> uitextdemo
 
+linesWith s = cons (case break (== '\n') s of
+                      (l, "") -> (l,[])
+                      (l, s') -> (l++"\n", case s' of
+                                             []    -> []
+                                             _:s'' -> linesWith s''))
+  where
+    cons ~(h, t) =  h : t

@@ -24,6 +24,7 @@ import FRP.UISF.AuxFunctions
 import Control.Arrow
 import Data.Char (isSpace)
 
+
 ------------------------------------------------------------
 -- * Widgets
 ------------------------------------------------------------
@@ -32,7 +33,7 @@ import Data.Char (isSpace)
 -- Text Label --
 ----------------
 -- | Labels are always left aligned and vertically centered.
-label :: String -> UISF a a
+label :: UITexty s => s -> UISF a a
 label s = mkBasicWidget layout draw
   where
     (minw, minh) = (textWidth s + padding * 2, textHeight s + padding * 2)
@@ -49,8 +50,8 @@ label s = mkBasicWidget layout draw
 --  entire String: if given True, it will prefer the older characters 
 --  (cutting off later text), and if given False, it will prefer the 
 --  newer characters (cutting off older ones.
-displayField :: WrapSetting -> UISF String ()
-displayField wrap = mkWidget "" layout (\v v' _ _ -> ((), v, v /= v')) draw 
+displayField :: UITexty s => WrapSetting -> UISF s ()
+displayField wrap = arr toUIText >>> mkWidget (toUIText "") layout (\v v' _ _ -> ((), v, v /= v')) draw 
   where
     minh = textHeight "" + padding * 2
     layout = makeLayout (Stretchy $ padding * 2) (Stretchy minh)
@@ -99,50 +100,51 @@ withDisplay sf = proc a -> do
 --  other widgets.
 --
 --  The static argument provides the textbox with initial text.
-textbox :: String -> UISF (SEvent String) String
-textbox = setLayout layout . textField CharWrap
+textbox :: UITexty s => s -> UISF (SEvent s) String
+textbox s = (setLayout layout . textField CharWrap) s >>> arr uitextToString
   where layout = makeLayout (Stretchy $ padding * 2) (Fixed $ textHeight "" + padding * 2)
 
 {-# DEPRECATED textboxE "As of UISF-0.4.0.0, use textbox instead" #-}
+textboxE :: UITexty s => s -> UISF (SEvent s) String
 textboxE = textbox
 
 -- | The textbox' variant of textbox contains no internal state about 
 --  the text it displays.  Thus, it must be paired with rec and delay 
 --  and used bidirectionally to be effective.
-textbox' :: UISF String String
+textbox' :: UITexty s => UISF s UIText
 textbox' = setLayout layout $ textField' CharWrap
   where layout = makeLayout (Stretchy $ padding * 2) (Fixed $ textHeight "" + padding * 2)
 
 -- | TextFields are like textboxes but can support multiple lines.  By 
 --  default, they are stretchy in the vertical dimension.
-textField :: WrapSetting -> String -> UISF (SEvent String) String
+textField :: UITexty s => WrapSetting -> s -> UISF (SEvent s) UIText
 textField wrap startingVal = proc ms -> do
-  rec s  <- delay startingVal -< ts
-      ts <- textField' wrap -< maybe s id ms
+  rec s  <- delay $ toUIText startingVal -< ts
+      ts <- textField' wrap -< maybe s toUIText ms
   returnA -< ts
 
 -- | A variant of textField that contains no internal state about the 
 --  text it displays.
-textField' :: WrapSetting -> UISF String String
-textField' wrap = focusable $ mkWidget ("",0) layout process draw 
+textField' :: UITexty s => WrapSetting -> UISF s UIText
+textField' wrap = focusable $ mkWidget (toUIText "",0) layout process draw 
   where
     paddedRect :: Rect -> Rect
     paddedRect ((x,y), (w, h)) = ((x+padding,y+padding), (w-padding*2, h-padding*2))
-    texth = textHeight ""
-    layout = makeLayout (Stretchy $ padding * 2) (Stretchy $ texth + padding * 2)
+    layout = makeLayout (Stretchy $ padding * 2) (Stretchy $ textHeight "" + padding * 2)
     draw b@((x,y), (w, h)) inFocus (s,i) = 
-      let th = textHeight s
+      let texth = textHeight s
           w' = w - padding * 2
-          (pts, texts) = prepText wrap 1 (paddedRect b) s
-          (i',j) = calcLine (i,0) texts
-          texts' = drop (j - length pts) texts
-          j' = min j (length pts)
+          b' = paddedRect b
+          (pts, texts) = prepText wrap 1 b' s
+          (i',j) = calcLine (i,0) (map uitextToString texts)
+          texts' = drop (j + 1 - length pts) texts
+          j' = min j (length pts - 1)
           cursory = y + padding + j'*texth
-          cursorx = x + 1+padding + textWidth (take i' $ texts' !! j)
+          cursorx = x + 1+padding + textWidth (takeUIText i' $ texts !! j)
           cpt1 = (cursorx, cursory)
           cpt2 = (cursorx, cursory+texth)
       in withColor Black (textLines $ zip pts $ map (fst . textWithinPixels w') texts')
-         // whenG (inFocus && inside cpt1 b && inside cpt2 b) 
+         // whenG (inFocus && inside cpt1 b' && inside cpt2 b') 
                   (withColor Gray $ line cpt1 cpt2)
          // shadowBox pushed b 
          // withColor White (rectangleFilled b)
@@ -151,40 +153,53 @@ textField' wrap = focusable $ mkWidget ("",0) layout process draw
       '\n':_ -> (0,j+1)
       _ -> (i,j)
     calcLine (i,j) (s:ss) = let i' = i - length s in if i' >= 0 then calcLine (i',j+1) ss else (i,j)
-    trimTailWS s = case reverse s of
-      (c:s') -> if isSpace c then reverse s' else s
-      _ -> s
-    process s state@(_,i) b@((x,y),(w,_)) evt = (snew, (snew,inew), state /= (snew,inew))
+    trimTailWS :: UIText -> UIText
+    trimTailWS (UIText uit) = case reverse uit of
+      [] -> UIText uit
+      ((c,f,str):uit') -> case reverse str of
+        [] -> trimTailWS $ UIText $ reverse uit'
+        (ch:s') -> if isSpace ch then UIText $ reverse ((c,f,reverse s'):uit')
+                   else UIText uit
+    process str state@(_,i) b@((x,y),(w,_)) evt = (snew, (snew,inew), state /= (snew,inew))
       where 
+        s = toUIText str
+        texth = textHeight s
         (pts, texts) = prepText wrap 1 (paddedRect b) s
-        (i',j) = calcLine (i,0) texts
+        strings = map uitextToString texts
+        (i',j) = calcLine (i,0) strings
         (snew,inew) = case evt of
-          (Key c _ True)             -> let (t,d) = splitAt i s in (t ++ c:d, i+1)
-          (SKey KeyEnter     _ True) -> let (t,d) = splitAt i s in (t ++ '\n':d, i+1) 
-          (SKey KeyBackspace _ True) -> let (t,d) = splitAt (i-1) s in (t ++ drop 1 d, max (i-1) 0)
-          (SKey KeyDelete    _ True) -> let (t,d) = splitAt i s in (t ++ drop 1 d, i)
+          (Key c _ True)             -> let (t,d) = splitUIText i s 
+                                        in (t `appendUIText` toUIText [c] `appendUIText` d, i+1)
+          (SKey KeyEnter     _ True) -> let (t,d) = splitUIText i s 
+                                        in (t `appendUIText` toUIText "\n" `appendUIText` d, i+1) 
+          (SKey KeyBackspace _ True) -> let (t,d) = splitUIText (i-1) s 
+                                        in (t `appendUIText` dropUIText 1 d, max (i-1) 0)
+          (SKey KeyDelete    _ True) -> let (t,d) = splitUIText i s 
+                                        in (t `appendUIText` dropUIText 1 d, i)
           (SKey KeyLeft      _ True) -> (s, max (i-1) 0)
-          (SKey KeyRight     _ True) -> (s, min (i+1) (length s))
+          (SKey KeyRight     _ True) -> (s, min (i+1) (uitextLen s))
           -- For KeyUp, we are on the jth line moving to the (j-1)th line.
           -- We add up the first (j-2) lines and then add the number of characters 
           -- in line (j-1) that take up the same pixel width as the number at i' in 
           -- the jth line.
           -- Note that because j is 0-indexed, we add 1 whenever we do a take.
           (SKey KeyUp        _ True) -> (s, if j <= 0 then 0 else
-            sum (map length $ take (j-1) texts) +
-            (length $ fst $ textWithinPixels (textWidth $ take i' (texts!!j)) $ trimTailWS (texts!!(j-1))))
+            sum (map length $ take (j-1) strings) +
+            (uitextLen $ fst $ textWithinPixels (textWidth $ takeUIText i' (texts!!j)) 
+                            $ trimTailWS (texts!!(j-1))))
           -- KeyDown is the same as KeyUp but in the other direction.
-          (SKey KeyDown      _ True) -> (s, if j >= length texts - 1 then length s else
-            sum (map length $ take (j+1) texts) + 
-            (length $ fst $ textWithinPixels (textWidth $ take i' (texts!!j)) $ trimTailWS (texts!!(j+1))))
-          (SKey KeyEnd       _ True) -> (s, length s)
+          (SKey KeyDown      _ True) -> (s, if j >= length texts - 1 then uitextLen s else
+            sum (map length $ take (j+1) strings) + 
+            (uitextLen $ fst $ textWithinPixels (textWidth $ takeUIText i' (texts!!j)) 
+                            $ trimTailWS (texts!!(j+1))))
+          (SKey KeyEnd       _ True) -> (s, uitextLen s)
           (SKey KeyHome      _ True) -> (s, 0)
           (Button (bx,by) LeftButton True) -> (s,
             let j' = ((by - y) `div` texth) + max 0 (j - length pts)
-            in if j' >= length texts then length s 
-               else sum (map length $ take j' texts) + 
-                    (length $ fst $ textWithinPixels (bx - x) $ trimTailWS (texts!!j')))
-          _  -> (s, max 0 $ min i $ length s)
+            in if j' >= length texts then uitextLen s 
+               else sum (map length $ take j' strings) + 
+                    (uitextLen $ fst $ textWithinPixels (bx - x) $ trimTailWS (texts!!j')))
+          _  -> (s, max 0 $ min i $ uitextLen s)
 
 
 
@@ -193,7 +208,7 @@ textField' wrap = focusable $ mkWidget ("",0) layout process draw
 -- Title --
 -----------
 -- | Title frames a UI by borders, and displays a static title text.
-title :: String -> UISF a b -> UISF a b
+title :: UITexty s => s -> UISF a b -> UISF a b
 title str (UISF fl f) = UISF layout h where
   (tw, th) = (textWidth str, textHeight str)
   drawit ((x, y), (w, h)) = 
@@ -225,7 +240,7 @@ spacer = mkBasicWidget (Layout 0 0 0 0 0 0 1) (const nullGraphic)
 -- 
 --  The regular button is down as long as the mouse button or key press is 
 --  down and then returns to up.
-button :: String -> UISF () Bool
+button :: UITexty s => s -> UISF () Bool
 button l = focusable $ 
   mkWidget False d process draw
   where
@@ -254,11 +269,11 @@ button l = focusable $
 -- | The sticky button, on the other hand, once 
 -- pressed, remains depressed until is is clicked again to be released.
 -- Thus, it looks like a button, but it behaves more like a checkbox.
-stickyButton :: String -> UISF () Bool
+stickyButton :: UITexty s => s -> UISF () Bool
 stickyButton l = constA Nothing >>> stickyButtonS l
 
 -- | This variant of stickyButton is settable by its input stream.
-stickyButtonS :: String -> UISF (SEvent Bool) Bool
+stickyButtonS :: UITexty s => s -> UISF (SEvent Bool) Bool
 stickyButtonS l = arr (fmap $ \b -> if b then 1 else 0) >>> cycleboxS d lst 0 where
   (tw, th) = (textWidth l, textHeight l)
   (minw, minh) = (tw + padding * 2, th + padding * 2)
@@ -277,11 +292,11 @@ stickyButtonS l = arr (fmap $ \b -> if b then 1 else 0) >>> cycleboxS d lst 0 wh
 ---------------
 -- | Checkbox allows selection or deselection of an item.
 --   It has a static label as well as an initial state.
-checkbox :: String -> Bool -> UISF () Bool
+checkbox :: UITexty s => s -> Bool -> UISF () Bool
 checkbox l state = constA Nothing >>> checkboxS l state
 
 -- | This variant of checkbox is settable by its input stream.
-checkboxS :: String -> Bool -> UISF (SEvent Bool) Bool
+checkboxS :: UITexty s => s -> Bool -> UISF (SEvent Bool) Bool
 checkboxS l state = proc eb -> do
   rec s  <- delay state -< s'
       e  <- edge <<< toggle state d draw -< s
@@ -332,18 +347,18 @@ checkGroupS sas = let (s, a) = unzip sas in
 -- and the index of the initially selected one, and the widget itself 
 -- returns the continuous stream representing the index of the selected 
 -- choice.
-radio :: [String] -> Int -> UISF () Int
+radio :: UITexty s => [s] -> Int -> UISF () Int
 radio labels i = constA Nothing >>> radioS labels i
 
 -- | This variant of radio is settable by its input stream.
-radioS :: [String] -> Int -> UISF (SEvent Int) Int
+radioS :: UITexty s => [s] -> Int -> UISF (SEvent Int) Int
 radioS labels i = proc ei -> do
   rec s   <- delay i -< s''
       s'  <- aux 0 labels -< s
       let s'' = maybe (maybe s id s') id ei
   returnA -< s''
   where
-    aux :: Int -> [String] -> UISF Int (SEvent Int)
+    --aux :: Int -> [String] -> UISF Int (SEvent Int)
     aux _ [] = arr (const Nothing)
     aux j (l:ls) = proc n -> do
       u <- edge <<< toggle (i == j) d draw -< n == j

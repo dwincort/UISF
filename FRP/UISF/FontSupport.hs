@@ -9,11 +9,18 @@
 
 module FRP.UISF.FontSupport (
   textWidth, textWithinPixels, textHeight,
+  BitmapFont(..)
   ) where
 
 import Graphics.UI.GLUT.Fonts
 import Data.Array.IArray
 import Data.List (foldl')
+
+import Control.DeepSeq
+
+-- FIXME: I hate having an orphan instance here, but I'm not sure what to do about it.
+instance NFData BitmapFont where
+  rnf f = seq f ()
 
 -- data UIText = UIText Font RGB Double {-Scaling-} String
 --             | UIComposite UIText UIText

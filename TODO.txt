@@ -1,8 +1,9 @@
 UISF FUTURE FEATURES/CHANGES
 
 Graphics and Widgets
-- Multiple font support.
-- make a data type UIText: UIText may be expanded (for instance with font, size, etc.) but is essentially a list of (textColor, bgColor, font, size, String).  Label takes a UIText, and certain versions of textbox work with UIText.  Use OverloadedStrings to make this super effective.  A function UIText -> Dimension which calculates how many pixels tall and wide the text will render.
+- Extend UIText with background color support.
+- Extend UIText with vector fonts and scalable font sizes.
+- Make UIText automatically simplify itself; fix default color not always being used.
 - mkBasicWidget should be (a -> b) and its draw routine should take either a or b or both.  Then, I can make a dynamic label that prints its input.  Or maybe not.
 - Consider adding a refresh signal of some sort that is automatically provided to widgets that just "re-emerge" from an unused branch of arrow choice.  That way, if they were left in an odd state when the switch happens, they can be normal when they come back.  Alternatively, perhaps widgets can be coded so that they can gracefully fix themselves even when given a NoUIEvent
 - Like the 'S' widgets, perhaps I could make 'D' widgets which are dynamic (e.g. a button or label with dynamic text, a radio with dynamic options, etc).  
