@@ -17,7 +17,6 @@ We declare the module name and import UISF
 
 > module FRP.UISF.Examples.SevenGuis where
 > import FRP.UISF
-> import FRP.UISF.UITypes (Layout)
 > import Text.Read (readMaybe)  -- For Temperature Converter
 > 
 > import System.Locale          -- For Flight Booker
@@ -27,12 +26,12 @@ We declare the module name and import UISF
 > import Data.Time.Format       -- For Flight Booker
 > import Data.Maybe             -- For Flight Booker, Circle Draw
 > 
-> import FRP.UISF.WidgetConstruction -- For Timer, Circle Draw
+> import FRP.UISF.Widget.Construction -- For Timer, Circle Draw
 > 
 > import Data.List (isInfixOf)  -- For CRUD
 > import Data.Char (toLower)    -- For CRUD
 > 
-> import FRP.UISF.Keys          -- For Circle Draw
+> import FRP.UISF.UITypes       -- For Circle Draw
 > import FRP.UISF.Graphics      -- For Circle Draw
 > import Data.List (delete)     -- For Circle Draw
 > import Control.Monad (mplus)  -- For Circle Draw

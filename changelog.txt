@@ -1,5 +1,38 @@
 changelog
 
+0.4.0.0
+In big news, the whole GLFW back end was removed and replaced with GLUT.  
+This should hopefully improve stability and make future updates easier.  
+The code is also somewhat parameterized on the back end, meaning that it 
+can accept alternate rendering options fairly easily.  I encourage users 
+to write rendering functions for the new Graphic type and submit pull requests.
+
+NEW FEATURES
+* Added scrollable widget
+* Added displayField widget
+* Added new settable widgets (named ***S) that allow one to programmatically 
+    set data within widgets.
+* Extended the Color data type to include the common UI grays.
+* ArrowIO updated to include terminalIO function
+
+BUG FIXES/ADJUSTMENTS
+* removed implicit delay from accum (this also affects hold)
+* removed implicit delay from listbox
+* Restructured Layout data type (layout smart constructors are unaffected)
+* histogram widgets no longer normalize their input data by default (also 
+    fixed some graphical issues)
+
+RENAMED/MOVED
+* ArrowTime has been replaced with an ArrowReader DeltaT instance
+* Old asynchronous functions have been replaced with new ones
+* Widget constructors moved to their own module
+
+REMOVED/DEPRECATED:
+* textboxE has been deprecated and replaced with textbox
+* mergeE and (~++) have been deprecated
+* UIParams no longer export a constructor (use defaultUIParams with record syntax updates)
+
+
 0.3.0.2
 * Added changelog
 * Fixed a bug with nested focusable widgets incorrectly focusing

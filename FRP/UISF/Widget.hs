@@ -14,9 +14,8 @@
 
 module FRP.UISF.Widget where
 
-import FRP.UISF.WidgetConstruction
+import FRP.UISF.Widget.Construction
 import FRP.UISF.Graphics
-import FRP.UISF.Keys
 import FRP.UISF.UITypes
 import FRP.UISF.UISF
 import FRP.UISF.AuxFunctions

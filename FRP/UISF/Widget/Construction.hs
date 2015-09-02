@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 -- |
--- Module      :  FRP.UISF.WidgetConstruction
+-- Module      :  FRP.UISF.Widget.Construction
 -- Copyright   :  (c) Daniel Winograd-Cort 2015
 -- License     :  see the LICENSE file in the distribution
 --
@@ -13,10 +13,9 @@
 
 {-# LANGUAGE RecursiveDo, Arrows #-}
 
-module FRP.UISF.WidgetConstruction where
+module FRP.UISF.Widget.Construction where
 
 import FRP.UISF.Graphics
-import FRP.UISF.Keys
 import FRP.UISF.UITypes
 import FRP.UISF.UISF
 import FRP.UISF.AuxFunctions (SEvent, delay, constA)

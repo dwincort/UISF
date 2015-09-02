@@ -1,8 +1,7 @@
 {-# LANGUAGE Arrows #-}
 
 import FRP.UISF
-import FRP.UISF.UITypes (Layout)
-import FRP.UISF.WidgetConstruction (focusable)
+import FRP.UISF.Widget.Construction (focusable)
 import qualified Data.Map.Strict as Map
 
 {-

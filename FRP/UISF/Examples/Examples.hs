@@ -9,8 +9,7 @@
 module FRP.UISF.Examples.Examples where
 
 import FRP.UISF
-import FRP.UISF.Graphics --(withColor', rgbE, rectangleFilled)
-import FRP.UISF.FontSupport (BitmapFont(..))
+import FRP.UISF.Graphics
 
 import Numeric (showHex)
 

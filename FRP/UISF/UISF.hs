@@ -42,8 +42,7 @@ import Control.Arrow
 import Control.Arrow.Operations
 
 import FRP.UISF.Graphics
-import FRP.UISF.Keys
-import FRP.UISF.Glut
+import FRP.UISF.Render.GLUT
 import FRP.UISF.UITypes
 
 import FRP.UISF.AuxFunctions

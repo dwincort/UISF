@@ -1,20 +1,32 @@
 -----------------------------------------------------------------------------
 -- |
--- Module      :  FRP.UISF.FontSupport
+-- Module      :  FRP.UISF.Graphics.Text
 -- Copyright   :  (c) Daniel Winograd-Cort 2015
 -- License     :  see the LICENSE file in the distribution
 --
 -- Maintainer  :  dwc@cs.yale.edu
 -- Stability   :  experimental
 
-module FRP.UISF.FontSupport (
+{-# LANGUAGE BangPatterns, FlexibleInstances, TypeSynonymInstances #-}
+module FRP.UISF.Graphics.Text (
+  UIText(..), UITexty(..),
+  uitextToString, splitUIText, takeUIText, dropUIText, uitextLen,
+  pureUIText, appendUIText, coloredUIText, rgbUIText, fontUIText,
   textWidth, textWithinPixels, textHeight,
-  BitmapFont(..)
+  WrapSetting(..), prepText,
+  textWidth', textWithinPixels', textHeight',
+  uitextLines, uitextWords,
+  BitmapFont(..),
   ) where
 
 import Graphics.UI.GLUT.Fonts
 import Data.Array.IArray
 import Data.List (foldl')
+import Data.Char (isSpace)
+import Data.String (IsString(..))
+
+import FRP.UISF.Graphics.Color
+import FRP.UISF.Graphics.Types
 
 import Control.DeepSeq
 
@@ -22,23 +34,218 @@ import Control.DeepSeq
 instance NFData BitmapFont where
   rnf f = seq f ()
 
--- data UIText = UIText Font RGB Double {-Scaling-} String
---             | UIComposite UIText UIText
+defaultFont = Fixed9By15
+
+------------------------------------------------------------
+-- UI Text
+------------------------------------------------------------
+
+-- | Text in UISF can be rendered in multiple fonts and colors, 
+--  so we need a more powerful data type to encode it.  The UIText 
+--  data type does this.
+newtype UIText = UIText {unwrapUIT :: [(Maybe RGB, BitmapFont, String)]}
+  deriving (Eq, Show)
+instance NFData UIText where
+  rnf (UIText lst) = rnf lst
+instance IsString UIText where
+  fromString = pureUIText
+
+-- | To retain easy compatibility with Strings (or other text 
+--  representations), we also provide the UITexty class, which is 
+--  how all widgets that accept UIText should do so.
+class UITexty a where
+  toUIText :: a -> UIText
+
+instance UITexty UIText where
+  toUIText = id
+instance UITexty String where
+  toUIText = pureUIText
+--instance UITexty Text where
+--  toUIText = PureText . unpack
+
+-- | The empty string in UIText.
+emptyUIText :: UIText
+emptyUIText = UIText []
+
+-- | Returns True when given an empty string and False otherwise.
+isEmptyUIText :: UIText -> Bool
+isEmptyUIText uit = go (unwrapUIT uit) where
+  go [] = True
+  go ((_,_,[]):rest) = go rest
+  go _ = False
+
+-- | Removes all font and color formatting from a UIText, returning 
+--  its underlying String representation.
+uitextToString :: UIText -> String
+uitextToString (UIText lst) = concatMap (\(_,_,s) -> s) lst
+
+-- | Returns the number of characters in a UIText.
+uitextLen :: UIText -> Int
+uitextLen = length . uitextToString
+
+-- | Take a certain number of characters off of a UIText
+takeUIText :: Int -> UIText -> UIText
+takeUIText n = fst . splitUIText n
+--takeUIText n (UIText uit) = UIText $ go n uit where
+--  go 0 uit = uit
+--  go n [] = []
+--  go n ((c,f,s):rest) = let n' = n - length s in
+--    if n' < 0 then (c,f,drop n s):rest else go n' rest
+
+-- | Drop a certain number of characters from a UIText
+dropUIText :: Int -> UIText -> UIText
+dropUIText n = snd . splitUIText n
+
+-- | Split a UIText at the given character point.
+splitUIText :: Int -> UIText -> (UIText, UIText)
+splitUIText n (UIText uit) = let (u1,u2) = go n [] uit in (UIText u1, UIText u2) where
+  go 0 taken rest = (reverse taken, rest)
+  go n taken [] = (reverse taken, [])
+  go n taken ((c,f,s):rest) = let n' = n - length s in
+    if n' >= 0 then go n' ((c,f,s):taken) rest
+    else let (t,d) = splitAt n s in (reverse ((c,f,t):taken), (c,f,d):rest)
+
+-- | A convenience function for taking a UITexty object directly to the 
+--  underlying (RGB,Font,String) list.
+unwrapUITexty :: UITexty s => s -> [(Maybe RGB, BitmapFont, String)]
+unwrapUITexty = unwrapUIT . toUIText
+
+-- | Lifts a String to a UIText (with default color and font).
+pureUIText :: String -> UIText
+pureUIText s = UIText [(Nothing, defaultFont, s)]
+
+-- | Appends two UITexty objects together.
+appendUIText :: (UITexty s1, UITexty s2) => s1 -> s2 -> UIText
+appendUIText s1 s2 = UIText $ unwrapUITexty s1 ++ unwrapUITexty s2
+
+-- | Colors a UITexty object.
+coloredUIText :: UITexty s => Color -> s -> UIText
+coloredUIText c s = UIText $ map (\(_,f,str) -> (newC,f,str)) (unwrapUITexty s)
+ where newC = Just $ colorToRGB c
+
+-- | Colors a UITexty object with an exact RGB value.
+rgbUIText c s = UIText $ map (\(_,f,str) -> (c,f,str)) (unwrapUITexty s)
+
+-- | Converts the UITexty object to the given font.
+fontUIText f s = UIText $ map (\(c,_,str) -> (c,f,str)) (unwrapUITexty s)
 
 
-textHeight :: BitmapFont -> String -> Int
-textHeight f _ = getFontHeight f
+-- | Returns the width of the String in pixels as it will be rendered
+textWidth :: UITexty s => s -> Int
+textWidth s = sum $ map (\(_,f,str) -> textWidth' f str) (unwrapUITexty s)
 
-textWidth :: BitmapFont -> String -> Int
-textWidth f str = foldl' (\acc c -> acc + (getFontArray f ! c)) 0 str
+-- | Given a String and a number of pixels, returns the leading 
+--  substring that fits within the horizontal number of pixels along 
+--  with the remaining text of the String.
+textWithinPixels :: UITexty s => Int -> s -> (UIText, UIText)
+textWithinPixels i s = let (s1,s2) = go i (unwrapUITexty s) []
+  in (UIText s1, UIText s2) where
+  go i [] sofar = (reverse sofar, [])
+  go i ((c,f,str):rest) sofar = let i' = i - (textWidth' f str)
+    in if i' >= 0
+       then go i' rest ((c,f,str):sofar)
+       else let (s1,s2) = textWithinPixels' f i str
+            in (reverse $ (c,f,s1):sofar, (c,f,s2):rest)
 
-textWithinPixels :: BitmapFont -> Int -> String -> (String, String)
-textWithinPixels f i str = go f i str "" where
+-- | Returns the height of the String in pixels as it will be rendered
+textHeight :: UITexty s => s -> Int
+textHeight s = go (unwrapUITexty s) where
+  go [] = textHeight' defaultFont ""
+  go lst = maximum $ map (\(_,f,str) -> textHeight' f str) lst
+
+-- | The Wrap Setting is used to determine how to split up a long piece 
+--  of text.
+data WrapSetting = NoWrap | CharWrap | WordWrap
+  deriving (Eq, Show)
+
+-- | Turn the given String into a list of Strings.  If the wrap setting 
+--  is NoWrap, then this is basically just the lines function.  If it 
+--  is CharWrap or WordWrap, then no string in the list will be wider 
+--  than the width of the bounding box.  The returned list of points 
+--  indicate each Point where a line should be drawn.  Note that this 
+--  list may not be the same length as the list of strings.
+--
+--  Typically, this will be used in conjunction with zip and textLines 
+--  to produce text graphics.
+prepText :: (UITexty s)
+         => WrapSetting -- ^ Whether we prefer newer or older text
+         -> Double      -- ^ Line spacing
+         -> Rect        -- ^ Bounding Box
+         -> s           -- ^ The text to print (which is allowed to have new lines)
+         -> ([Point], [UIText])
+prepText wrap spacing ((x,y),(w,h)) s = (pts, outStrs) where
+  lineHeight = round (fromIntegral (textHeight s) * spacing)
+  numLines = h `div` lineHeight
+  pts = zip (replicate numLines x) [y, y+lineHeight..]
+  outStrs = concatMap (wrapText wrap w) (uitextLines' $ toUIText s)
+
+-- | wrapText takes a wrap setting, a width, and a string, and turns 
+--  it into a list of strings representing each wrapped line.  Strings 
+--  are assumed to have no line breaks in them.  Calling unlines on the 
+--  output will create a String that is wrapped.
+wrapText :: UITexty s => WrapSetting -> Int -> s -> [UIText]
+wrapText NoWrap _ s = [toUIText s]
+wrapText CharWrap i s = if isEmptyUIText $ toUIText s
+    then []
+    else let (t,d) = textWithinPixels i s in t:wrapText CharWrap i d
+wrapText WordWrap i s = f i emptyUIText (uitextWords' $ toUIText s) where
+  f :: Int -> UIText -> [UIText] -> [UIText]
+  f _ sofar [] = if isEmptyUIText sofar then [] else [sofar]
+  f j sofar (w:ws) = case isEmptyUIText sofar of
+    True  -> if textWidth w > i 
+             then let (t,d) = textWithinPixels i w in t:f i emptyUIText (d:ws)
+             else f (i-textWidth w) w ws
+    False -> if textWidth w > j 
+             then sofar:f i emptyUIText (w:ws)
+             else f (j-textWidth w) (appendUIText sofar w) ws
+
+-- | The common String 'words' function applicable to UIText.
+uitextWords :: UIText -> [UIText]
+uitextWords = uitSplitter isSpace (\x -> ([], dropWhile isSpace x))
+
+-- | The common String 'lines' function applicable to UIText.
+uitextLines :: UIText -> [UIText]
+uitextLines = uitSplitter (== '\n') (\x -> ([], drop 1 x))
+
+-- | A variant of uitextLines that keeps the newline characters at the 
+--  ends of the output.
+uitextLines' :: UIText -> [UIText]
+uitextLines' = uitSplitter (== '\n') (splitAt 1)
+
+-- | A variant of uitextWords that keeps the whitespace characters at 
+--  the ends of the output.
+uitextWords' :: UIText -> [UIText]
+uitextWords' = uitSplitter isSpace (span isSpace)
+
+-- | A convenience function for writing functions like lines and words.
+uitSplitter :: (Char -> Bool) -> (String -> (String,String)) -> UIText -> [UIText]
+uitSplitter checker splitter (UIText lst) = map UIText $ uitSplitter' lst where
+  uitSplitter' [] = []
+  uitSplitter' uitext = go uitext [] where
+    go [] sofar = [reverse sofar]
+    go ((c,f,s):rest) sofar = case break checker s of
+      (_, "") -> go rest ((c,f,s):sofar)
+      (l,s') -> reverse ((c,f,l++s1):sofar) : uitSplitter' ((c,f,s2):rest)
+        where (s1,s2) = splitter s'
+
+
+-- | Returns the text height of a String rendered in the given bitmap font.
+textHeight' :: BitmapFont -> String -> Int
+textHeight' f _ = getFontHeight f
+
+-- | Returns the text width of a String rendered in the given bitmap font.
+textWidth' :: BitmapFont -> String -> Int
+textWidth' f str = foldl' (\acc c -> acc + (getFontArray f ! c)) 0 str
+
+-- | Splits a String based on what can fit within the given number of 
+--  pixels (the fst of the result) and what's left over (the snd).
+textWithinPixels' :: BitmapFont -> Int -> String -> (String, String)
+textWithinPixels' f i str = go f i str "" where
   go _ _ [] sofar = (reverse sofar, "")
   go f i (c:s) sofar = let i' = i - (getFontArray f ! c)
     in if i' >= 0 then go f i' s (c:sofar) else (reverse sofar, c:s)
 
-
+-- | Returns the font height for a given font.
 getFontHeight :: BitmapFont -> Int
 getFontHeight Fixed8By13    = 14
 getFontHeight Fixed9By15    = 16
@@ -50,6 +257,7 @@ getFontHeight Helvetica18   = 23
 --getFontHeight Roman         = 153
 --getFontHeight MonoRoman     = 153
 
+-- | Returns the font array for a given font.
 getFontArray :: BitmapFont -> Array Char Int
 getFontArray Fixed8By13     = fixed8By13
 getFontArray Fixed9By15     = fixed9By15
@@ -63,6 +271,7 @@ getFontArray Helvetica18    = helvetica18
 
 
 
+-- | Makes Char width arrays for fonts.
 makeCharArray :: [(Char, Int)] -> Array Char Int
 makeCharArray = array (toEnum 0 :: Char, toEnum 255 :: Char)
 
