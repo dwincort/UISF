@@ -27,6 +27,7 @@ import Graphics.Rendering.OpenGL (($=), GLfloat)
 import Control.Concurrent
 import Control.Concurrent.MVar
 import Control.Concurrent.STM.TChan
+import Control.Exception (catch,IOException)
 import Control.Monad.STM (atomically)
 import Control.Monad (when)
 import Data.IORef
@@ -125,8 +126,10 @@ openWindow rgb title (x,y) = do
     windowSize $= Size (fromIntegral x) (fromIntegral y)
     -- Update the WindowData Window reference to point to this new window.
     writeIORef wRef (Just w)
+    
     -- We want the program to be able to continue when the window closes.
-    actionOnWindowClose $= ContinueExecution
+    catch (actionOnWindowClose $= ContinueExecution)
+          (const (return ())::IOException->IO())
     -- Set the default background color.
     setBackgroundColor rgb
     
@@ -137,7 +140,8 @@ openWindow rgb title (x,y) = do
     keyboardMouseCallback $= Just (keyboardMouseCB eChan)
     motionCallback $= Just (motionCB eChan)
     passiveMotionCallback $= Just (motionCB eChan)
-    closeCallback $= Just (closeCB wRef)
+    catch (closeCallback $= Just (closeCB wRef))
+          (const (return ())::IOException->IO())
     
     -- These 4 settings are pulled from elsewhere.
     -- They're probably good?
@@ -148,6 +152,7 @@ openWindow rgb title (x,y) = do
     
     -- Indicate to the main thread that the window is good to go.
     putMVar continue ()
+    
     -- Begin the main loop.
     mainLoop
 
@@ -173,6 +178,7 @@ displayCB ref = do
   (Size x y) <- get windowSize
   renderGraphicInOpenGL (fromIntegral x, fromIntegral y) g
   swapBuffers
+  postRedisplay Nothing
 
 -- | When the GUI is idle, we should check if the dirty bit is set.  
 --  If so, we signal a redraw of the display.
