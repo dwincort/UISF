@@ -10,7 +10,7 @@
 -- This module provides functionality to allow UISF to perform 
 -- asynchronous computations.
 
-{-# LANGUAGE Arrows, TupleSections, FlexibleContexts #-}
+{-# LANGUAGE Arrows, TupleSections, FlexibleContexts, FlexibleInstances, TypeSynonymInstances #-}
 
 module FRP.UISF.Asynchrony (
     -- * ArrowIO
@@ -79,6 +79,17 @@ class Arrow a => ArrowIO a where
   --   sort of clean up behavior.
   terminalAIO :: IO () -> a b b
 
+instance ArrowIO IOAuto where
+  liftAIO f = Automaton (Kleisli g) where
+    g b = f b >>= (\c -> return (c, Automaton (Kleisli g)))
+  initialAIO iod f = Automaton (Kleisli g) where
+    g b = do
+      d <- iod
+      let (Automaton (Kleisli h)) = f d
+      h b
+  terminalAIO _ = initialAIO errorMsg (const $ arr id) where
+    errorMsg = putStrLn "terminalAIO not defined for IOAuto.  Ignoring ..."
+
 
 {- $automaton
 The functions we want to perform asynchronously may be pure, but it 
@@ -101,16 +112,18 @@ type IOAuto = Automaton (Kleisli IO)
 
 -- | A convenience function for converting stateful functions to 
 --  'Automaton's.
+{-# DEPRECATED statefulFunctionToAutomaton "If you really need this, write it where you need it." #-}
 statefulFunctionToAutomaton :: ArrowLoop a => s -> ((b,s) -> (c,s)) -> Automaton a b c
 statefulFunctionToAutomaton s f = loop $ second (delay s) >>> arr f
 
 -- | A convenience function for converting IO actions to 'IOAuto's.
+{-# DEPRECATED actionToIOAuto "Use liftAIO instead." #-}
 actionToIOAuto :: (b -> IO c) -> IOAuto b c
-actionToIOAuto f = Automaton (Kleisli g) where
-  g b = f b >>= (\c -> return (c, Automaton (Kleisli g)))
+actionToIOAuto = liftAIO
 
 -- | A convenience function for converting stateful IO actions to 
 --  'IOAuto's.
+{-# DEPRECATED statefulActionToIOAuto "Use liftAIO and logic instead." #-}
 statefulActionToIOAuto :: s -> ((b,s) -> IO (c,s)) -> IOAuto b c
 statefulActionToIOAuto s f = loop $ second (delay s) >>> actionToIOAuto f
 

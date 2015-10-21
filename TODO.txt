@@ -1,7 +1,7 @@
 UISF FUTURE FEATURES/CHANGES
 
 Graphics and Widgets
-- Extend UIText with background color support.
+- Use an external Colors library (see Hackage in general, but my inspiration is from the Diagrams package)
 - Extend UIText with vector fonts and scalable font sizes.
 - Make UIText automatically simplify itself; fix default color not always being used.
 - mkBasicWidget should be (a -> b) and its draw routine should take either a or b or both.  Then, I can make a dynamic label that prints its input.  Or maybe not.
