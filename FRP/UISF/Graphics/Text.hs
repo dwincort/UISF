@@ -99,7 +99,7 @@ dropUIText n = snd . splitUIText n
 -- | Split a UIText at the given character point.
 splitUIText :: Int -> UIText -> (UIText, UIText)
 splitUIText n (UIText uit) = let (u1,u2) = go n [] uit in (UIText u1, UIText u2) where
-  go 0 taken rest = (reverse taken, rest)
+  go n taken rest | (n <= 0) = (reverse taken, rest)
   go n taken [] = (reverse taken, [])
   go n taken ((c,f,s):rest) = let n' = n - length s in
     if n' >= 0 then go n' ((c,f,s):taken) rest
@@ -112,7 +112,7 @@ unwrapUITexty = unwrapUIT . toUIText
 
 -- | Lifts a String to a UIText (with default color and font).
 pureUIText :: String -> UIText
-pureUIText s = UIText [(Nothing, defaultFont, s)]
+pureUIText s = if null s then emptyUIText else UIText [(Nothing, defaultFont, s)]
 
 -- | Appends two UITexty objects together.
 appendUIText :: (UITexty s1, UITexty s2) => s1 -> s2 -> UIText

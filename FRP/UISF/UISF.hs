@@ -10,7 +10,7 @@
 -- A simple Graphical User Interface with concepts borrowed from Phooey
 -- by Conal Elliot.
 
-{-# LANGUAGE Arrows, RecursiveDo, CPP, OverlappingInstances, FlexibleInstances, TypeSynonymInstances, MultiParamTypeClasses #-}
+{-# LANGUAGE Arrows, RecursiveDo, CPP, TypeSynonymInstances, MultiParamTypeClasses #-}
 
 module FRP.UISF.UISF (
     UISF(..),

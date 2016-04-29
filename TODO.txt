@@ -20,3 +20,4 @@ Bugs and Performance
 
 Other
 - Remove (deprecate) eventBuffer from the library (add it to Euterpea where it belongs)
+- Add support for multiple open windows (update 7Guis to use a second window in circle drawing example)

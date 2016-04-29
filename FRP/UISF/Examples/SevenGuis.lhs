@@ -19,8 +19,6 @@ We declare the module name and import UISF
 > import FRP.UISF
 > import Text.Read (readMaybe)  -- For Temperature Converter
 > 
-> import System.Locale          -- For Flight Booker
-> --import Data.Time.Format.Locale    -- FIXME To be used with time >= 1.5
 > import Data.Time              -- For Flight Booker
 > import Data.Time.Clock (getCurrentTime)   -- For Flight Booker
 > import Data.Time.Format       -- For Flight Booker
@@ -149,8 +147,7 @@ indicating that the entry is invalid.
 >       Just _ -> returnA -< ret
 >       Nothing -> label "invalid!" -< Nothing
 >   where readTimeMaybe :: TimeLocale -> String -> String -> Maybe UTCTime
->         readTimeMaybe tl format s = case readsTime tl format s of
-> --        readTimeMaybe tl format s = case readSTime True tl format s of -- FIXME To be used with time >= 1.5
+>         readTimeMaybe tl format s = case readSTime True tl format s of
 >                                       [(x, "")] -> Just x
 >                                       _ -> Nothing
 
@@ -169,7 +166,7 @@ string.
 >     t1 <- timeInputTextbox tl format (formatTime tl format currentTime) -< ()
 >     t2 <- case choice of
 >             1 -> timeInputTextbox tl format (formatTime tl format nextweek) -< ()
->             _ -> label "" -< Nothing
+>             _ -> label " " -< Nothing
 >     resetText <- unique -< (choice, t1, t2)
 >     b <- if (choice == 0 && isJust t1) || (choice == 1 && verifyGreater t1 t2)
 >          then do
@@ -400,15 +397,16 @@ Now, we have the tools to make the circle canvas
 > circleCanvas = focusable $ mkWidget ([], Nothing, (0,0)) layout process draw
 >   where
 >     layout = makeLayout (Stretchy 100) (Stretchy 100)
->     process inpLst (prevLst, prevFC, prevPt) _bbx evt = (clickEvts, (newLst, focusCircle, mousePt), redraw)
+>     process inpLst (prevLst, prevFC, prevPt) bbx evt = (clickEvts, (newLst, focusCircle, mousePt), redraw)
 >       where 
 >         newLst = fromMaybe prevLst inpLst
 >         (clickEvts, focusCircle, mousePt, redraw) = case (evt, isJust inpLst) of
 >           (Button pt LeftButton  True, d) -> ((Just pt, Nothing),  prevFC, prevPt, d)
 >           (Button pt RightButton True, d) -> ((Nothing, getSelectedCircle pt newLst), prevFC, prevPt, d)
->           (MouseMove pt, d) -> let fc = getSelectedCircle pt newLst in ((Nothing, Nothing), fc, pt, prevFC /= fc || d)
+>           (MouseMove pt, d) | pt `inside` bbx -> let fc = getSelectedCircle pt newLst
+>                                                  in ((Nothing, Nothing), fc, pt, prevFC /= fc || d)
 >           (_, d) -> ((Nothing, Nothing), getSelectedCircle prevPt newLst, prevPt, d)
->     draw _ _ (cs,fc,_) = draw' cs fc
+>     draw bbx _ (cs,fc,_) = boundGraphic bbx $ draw' cs fc
 >     draw' [] Nothing = nullGraphic
 >     draw' [] (Just (p,r)) = withColor MediumBeige $ circleFilled p r
 >     draw' ((p,r):cs) fc = withColor Black (circleOutline p r) // draw' cs fc

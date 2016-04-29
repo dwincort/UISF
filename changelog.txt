@@ -1,5 +1,12 @@
 changelog
 
+0.4.0.1
+Fixed a minor text display bug
+Removed OverlappingInstances pragmas (they were unnecessary)
+Updated SevenGuis examples to fix a display bug with gui6 and to use the new time format library with gui3
+Added exports to Asynchrony (which should have been there in the first place)
+
+
 0.4.0.0
 In big news, the whole GLFW back end was removed and replaced with GLUT.  
 This should hopefully improve stability and make future updates easier.  

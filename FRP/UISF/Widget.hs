@@ -171,8 +171,9 @@ textField' wrap = focusable $ mkWidget (toUIText "",0) layout process draw
                                         in (t `appendUIText` toUIText [c] `appendUIText` d, i+1)
           (SKey KeyEnter     _ True) -> let (t,d) = splitUIText i s 
                                         in (t `appendUIText` toUIText "\n" `appendUIText` d, i+1) 
-          (SKey KeyBackspace _ True) -> let (t,d) = splitUIText (i-1) s 
-                                        in (t `appendUIText` dropUIText 1 d, max (i-1) 0)
+          (SKey KeyBackspace _ True) -> if i<=0 then (s,0)
+                                        else let (t,d) = splitUIText (i-1) s 
+                                             in (t `appendUIText` dropUIText 1 d, max (i-1) 0)
           (SKey KeyDelete    _ True) -> let (t,d) = splitUIText i s 
                                         in (t `appendUIText` dropUIText 1 d, i)
           (SKey KeyLeft      _ True) -> (s, max (i-1) 0)
@@ -435,7 +436,7 @@ listbox' = focusable $ mkWidget ([], -1) layout process draw
           SKey KeyEnd  _ True   -> length lst - 1
           _ -> boundCheck i
         ((_,y),_) = bbx
-        pt2index (_px,py) = (py-y) `div` lineheight
+        pt2index (_px,py) = (py-y-3) `div` lineheight
         boundCheck j = if j >= length lst then -1 else j
 
 

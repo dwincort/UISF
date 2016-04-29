@@ -19,6 +19,7 @@ module FRP.UISF.Asynchrony (
     -- * Signal Function Asynchrony
     -- $automaton
     Automaton(..), 
+    IOAuto, PureAuto,
     statefulFunctionToAutomaton,
     actionToIOAuto,
     statefulActionToIOAuto,
