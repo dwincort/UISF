@@ -5,15 +5,15 @@
 -- Last Modified on: 12/10/2013
 
 -- -- DESCRIPTION --
--- This code was inspired by a blog post by Heinrich Apfelmus on 
+-- This code was inspired by a blog post by Heinrich Apfelmus on
 -- bidirectional data flow in GUIs:
 -- http://apfelmus.nfshost.com/blog/2012/03/29-frp-three-principles-bidirectional-gui.html
--- 
+--
 -- Here we use UISF to create a similar example using arrowized FRP.
 
 
 {-# LANGUAGE Arrows, RecursiveDo #-}
-module FRP.UISF.Examples.Crud where
+module Main where
 import FRP.UISF
 
 import Data.List (isInfixOf)
@@ -59,7 +59,7 @@ crud = runUI (defaultUIParams {uiSize=(450, 400), uiTitle="CRUD"}) (crudUISF def
 -- | main = crud
 main = crud
 
--- | This is the main function that creates the crud GUI.  It takes an 
+-- | This is the main function that creates the crud GUI.  It takes an
 --   initial database of names as an argument.
 --   See notes below on the use of banana brackets and nested do blocks.
 crudUISF :: Database NameEntry -> UISF () ()
@@ -77,8 +77,8 @@ crudUISF initnamesDB = proc _ -> do
                     surnStr' = fmap (const $ lastName  (fdb `at` i)) iUpdate
             returnA -< NameEntry nameStr surnStr) |)
         returnA -< (i, nameData)) |)
-    buttons <- leftRight $ (edge <<< button "Create") &&& 
-                           (edge <<< button "Update") &&& 
+    buttons <- leftRight $ (edge <<< button "Create") &&&
+                           (edge <<< button "Update") &&&
                            (edge <<< button "Delete") -< ()
     (db,i') <- delay (initnamesDB, -1) -< case buttons of
             (Just _, (_, _))             -> (db ++ [nameData], length fdb)
@@ -104,7 +104,7 @@ crudUISF initnamesDB = proc _ -> do
 --     let nameStr' = fmap (const $ firstName (fdb `at` i)) iUpdate
 --         surnStr' = fmap (const $ lastName  (fdb `at` i)) iUpdate
 --         nameData = NameEntry nameStr surnStr
---     buttons <- leftRight $ (edge <<< button "Create") &&& 
+--     buttons <- leftRight $ (edge <<< button "Create") &&&
 --                            (edge <<< button "Delete") -< ()
 --     (db,i') <- delay (initnamesDB, -1) <- case buttons of
 --            (Just _, (_, _))             -> (db ++ [nameData], length fdb)
@@ -115,13 +115,11 @@ crudUISF initnamesDB = proc _ -> do
 --   returnA -< ()
 --   where
 --     ...
--- 
--- Clearly, this is easier to read and clearer as to what is going on. 
--- However, to keep the style entirely arrow-based, we are forced to inject 
--- arrow transformers (here leftRight and topDown) to modify chunks of the 
--- code.  The banana brackets (| |) allow us to refrain from retyping the 
--- "proc do" syntax, but in order to give other parts of the program access 
--- to the variables created in the banana bracketed chunks, we require 
+--
+-- Clearly, this is easier to read and clearer as to what is going on.
+-- However, to keep the style entirely arrow-based, we are forced to inject
+-- arrow transformers (here leftRight and topDown) to modify chunks of the
+-- code.  The banana brackets (| |) allow us to refrain from retyping the
+-- "proc do" syntax, but in order to give other parts of the program access
+-- to the variables created in the banana bracketed chunks, we require
 -- extra (seemingly excessive) returnA commands at the end of each.
-
-

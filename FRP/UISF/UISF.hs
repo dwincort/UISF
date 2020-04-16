@@ -17,14 +17,14 @@ module FRP.UISF.UISF (
     uisfSource, uisfSink, uisfPipe,
     uisfSourceE, uisfSinkE, uisfPipeE,
     -- * UISF Getters
-    getDeltaTime, getCTX, withCTX, getEvents, getFocusData, addTerminationProc, getMousePosition, 
+    getDeltaTime, getCTX, withCTX, getEvents, getFocusData, addTerminationProc, getMousePosition,
     -- * UISF constructors, transformers, and converters
-    mkUISF, 
+    mkUISF,
     -- * Layout Transformers
     -- $lt
-    leftRight, rightLeft, topDown, bottomUp, 
-    conjoin, unconjoin, 
-    setLayout, setSize, pad, 
+    leftRight, rightLeft, topDown, bottomUp,
+    conjoin, unconjoin,
+    setLayout, setSize, pad,
     -- * Execute UI Program
     UIParams, defaultUIParams,
     uiInitialize, uiClose, uiTitle, uiSize, uiInitFlow, uiTickDelay, uiCloseOnEsc, uiBackground,
@@ -62,16 +62,16 @@ import Control.Exception
 -- UISF Declaration and Instances
 ------------------------------------------------------------
 
-data UISF b c = UISF 
+data UISF b c = UISF
   { uisfLayout :: Flow -> Layout,
-    uisfFun    :: (CTX, Focus, DeltaT, UIEvent, b) -> 
+    uisfFun    :: (CTX, Focus, DeltaT, UIEvent, b) ->
                   IO (DirtyBit, Focus, Graphic, TerminationProc, c, UISF b c) }
 
 instance Category UISF where
   id = UISF (const nullLayout) fun where fun (_,foc,_,_,b) = return (False, foc, nullGraphic, nullTP, b, id)
   UISF gl g . UISF fl f = UISF layout fun where
-    layout flow = mergeLayout flow (fl flow) (gl flow)
-    fun (ctx, foc, t, e, b) = 
+    layout = mergeLayout fl gl
+    fun (ctx, foc, t, e, b) =
       let (fctx, gctx) = divideCTX ctx (fl $ flow ctx) (gl $ flow ctx)
       in do (fdb, foc',  fg, ftp, c, uisff') <- f (fctx, foc,  t, e, b)
             (gdb, foc'', gg, gtp, d, uisfg') <- g (gctx, foc', t, e, c)
@@ -86,8 +86,8 @@ instance Arrow UISF where
     fun (ctx, foc, t, e, (b, d)) = do
       (db, foc', g, tp, c, uisff') <- f (ctx, foc, t, e, b)
       return (db, foc', g, tp, (c,d), first uisff')
-  -- TODO: custom defs for &&& and *** may improve performance, but they'll end up 
-  -- looking like the ugly compose definition above.  Maybe I can find a way to 
+  -- TODO: custom defs for &&& and *** may improve performance, but they'll end up
+  -- looking like the ugly compose definition above.  Maybe I can find a way to
   -- abstract the behavior out so that it's all in one place.
 
 instance ArrowLoop UISF where
@@ -113,11 +113,11 @@ instance ArrowChoice UISF where
 
 
 instance ArrowCircuit UISF where
-    delay i = UISF (const nullLayout) (fun i) where 
+    delay i = UISF (const nullLayout) (fun i) where
       fun i (_,foc,_,_,b) = seq i $ return (False, foc, nullGraphic, nullTP, i, UISF (const nullLayout) (fun b))
 
 instance ArrowIO UISF where
-  liftAIO f = UISF (const nullLayout) fun where 
+  liftAIO f = UISF (const nullLayout) fun where
     fun (_,foc,_,_,b) = f b >>= (\c -> return (False, foc, nullGraphic, nullTP, c, liftAIO f))
   initialAIO iod f = UISF (const nullLayout) fun where
     fun inps = do
@@ -136,7 +136,7 @@ instance ArrowReader DeltaT UISF where
     h (ctx, foc, dt, e, (b, dt')) = do
       (db, foc', g, tp, c, uisf) <- f (ctx, foc, dt', e, b)
       return (db, foc', g, tp, c, newReader uisf)
-    
+
 
 
 ------------------------------------------------------------
@@ -178,7 +178,7 @@ getDeltaTime = mkUISF nullLayout (\(_,f,dt,_,_) -> (False, f, nullGraphic, nullT
 
 {-# DEPRECATED getCTX "As of UISF-0.4.0.0, use withCTX instead" #-}
 -- | Get the context signal from a UISF.
---   This has been deprecated in favor of withCTX as it can provide 
+--   This has been deprecated in favor of withCTX as it can provide
 --   misleading information.
 getCTX       :: UISF () CTX
 getCTX       = mkUISF nullLayout (\(c,f,_,_,_) -> (False, f, nullGraphic, nullTP, c))
@@ -240,7 +240,7 @@ modifyFlow newFlow (UISF l f) = UISF (const $ l newFlow) h where
   h (ctx, foc, t, e, b) = do
     (db, foc', g, tp, c, uisf) <- f (ctx {flow = newFlow}, foc, t, e, b)
     return (db, foc', g, tp, c, modifyFlow newFlow uisf)
-  
+
 
 modifyCTX  :: (CTX -> CTX) -> UISF a b -> UISF a b
 modifyCTX mod (UISF l f) = UISF l h where
@@ -256,7 +256,7 @@ setLayout l (UISF _ f) = UISF (const l) h where
     (db, foc', g, tp, c, uisf) <- f (ctx, foc, t, e, b)
     return (db, foc', g, tp, c, setLayout l uisf)
 
--- | A convenience function for setLayout, setSize sets the layout to a 
+-- | A convenience function for setLayout, setSize sets the layout to a
 -- fixed size (in pixels).
 setSize  :: Dimension -> UISF a b -> UISF a b
 setSize (w,h) = setLayout $ makeLayout (Fixed w) (Fixed h)
@@ -274,9 +274,9 @@ pad args@(w,n,e,s) (UISF fl f) = UISF layout h where
 -- * Execute UI Program
 ------------------------------------------------------------
 
--- | The UIParams data type provides an interface for modifying some 
---   of the settings for runUI without forcing runUI to take a zillion 
---   arguments.  Typical usage will be to modify the below defaultUIParams 
+-- | The UIParams data type provides an interface for modifying some
+--   of the settings for runUI without forcing runUI to take a zillion
+--   arguments.  Typical usage will be to modify the below defaultUIParams
 --   using record syntax.
 data UIParams = UIParams {
     uiInitialize :: IO ()   -- ^ An initialization action.
@@ -284,12 +284,12 @@ data UIParams = UIParams {
   , uiTitle :: String       -- ^ The UI window's title.
   , uiSize :: Dimension     -- ^ The size of the UI window.
   , uiInitFlow :: Flow      -- ^ The initial Flow setting.
-  , uiTickDelay :: DeltaT   -- ^ How long the UI will sleep between clock 
-                            --   ticks if no events are detected.  This 
-                            --   should be probably be set to O(milliseconds), 
-                            --   but it can be set to 0 for better performance 
+  , uiTickDelay :: DeltaT   -- ^ How long the UI will sleep between clock
+                            --   ticks if no events are detected.  This
+                            --   should be probably be set to O(milliseconds),
+                            --   but it can be set to 0 for better performance
                             --   (but also higher CPU usage)
-  , uiCloseOnEsc :: Bool    -- ^ Should the UI window close when the user 
+  , uiCloseOnEsc :: Bool    -- ^ Should the UI window close when the user
                             --   presses the escape key?
   , uiBackground :: RGB     -- ^ The default color of the UI window background.
 }
@@ -365,13 +365,13 @@ runUI p sf = do
             let ctx = defaultCTX (uiInitFlow p) wSize
             (dirty, foc, graphic, tproc', _, uisf') <- uisfFun uisf (ctx, lastFocus, t-tprev, ev, ())
             let foc' = resetFocus foc
-                -- When we're in the middle of setting focus, don't set 
+                -- When we're in the middle of setting focus, don't set
                 -- the graphic yet.  Wait until it's done, and then set it.
                 dirty' = case (snd lastFocus, snd foc') of
                     (_, SetFocusTo _) -> False
                     (SetFocusTo _, NoFocus) -> True
                     _ -> dirty
-            case dirty' of 
+            case dirty' of
               -- Is this deepseq even helping?
               True -> deepseq graphic $ setGraphics w (graphic, True)
               False -> setGraphics w (graphic, False)
